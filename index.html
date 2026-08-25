@@ -45,7 +45,7 @@ function roundRect(c,x,y,w,h,r){
 
 /* ================= 音频引擎（WebAudio 程序合成） ================= */
 const AU={
-  ctx:null, master:null, noise:null,
+  ctx:null, master:null, noise:null, primed:false,
   init(){
     if(this.ctx) return;
     const AC=window.AudioContext||window.webkitAudioContext;
@@ -60,7 +60,23 @@ const AU={
     const d=this.noise.getChannelData(0);
     for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
   },
-  resume(){ if(this.ctx&&this.ctx.state==='suspended') this.ctx.resume(); },
+  resume(){ if(this.ctx&&this.ctx.state==='suspended') this.ctx.resume().catch(()=>{}); },
+  unlock(){ // 必须在用户手势内调用：创建/恢复 AudioContext + 播放静音脉冲"预热"
+    this.init();
+    if(!this.ctx) return;
+    if(this.ctx.state==='suspended') this.resume();
+    if(!this.primed){
+      this.primed=true;
+      const t=this.ctx.currentTime, s=this.ctx.createBufferSource();
+      s.buffer=this.noise;
+      const g=this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001,t);      // 静音（不可闻），仅用于让 iOS 认可音频会话
+      g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+      s.connect(g); g.connect(this.master);
+      s.start(t,0,0.05);
+    }
+    if(G.debugAudio) console.log('[audio] 解锁后状态:', this.ctx.state);
+  },
   t(){ return this.ctx?this.ctx.currentTime:0; },
   tone(type,f0,f1,dur,vol,when,atk){
     if(!this.ctx) return;
@@ -295,6 +311,7 @@ const G={
   smashed:0, total:0, passed:false, panel:false, panelShown:false, panelDelay:0, panelT:0,
   state:'play', freezeT:0, shakeAmp:0, timeScale:1, slowmoT:0, hintT:8,
   breakTimes:[], lastRealDt:0, btn1:null, btn2:null,
+  debugAudio: location.search.indexOf('debug')>=0,   // 加 ?debug 可在控制台看音频状态
 };
 
 /* ================= 画布 ================= */
@@ -322,7 +339,7 @@ function panelHit(p){
   return inR(G.btn1)||inR(G.btn2);
 }
 cv.addEventListener('pointerdown',e=>{
-  AU.init(); AU.resume();
+  AU.unlock();
   const p=toCanvas(e);
   if(G.panel){
     if(!panelHit(p)) return;
@@ -369,6 +386,9 @@ window.addEventListener('pointerup',e=>{ if(e.pointerId===input.id) release(); }
 window.addEventListener('pointercancel',e=>{ if(e.pointerId===input.id) release(); });
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{ if(input.active) e.preventDefault(); },{passive:false});
+// 移动端音频解锁兜底：部分安卓/iOS 浏览器只认 touchstart 手势
+document.addEventListener('touchstart',()=>AU.unlock(),{passive:true});
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) AU.resume(); });
 
 /* ================= 破坏 ================= */
 function addCracks(it){
