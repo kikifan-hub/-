@@ -64,16 +64,17 @@ const AU={
   unlock(){ // 必须在用户手势内调用：创建/恢复 AudioContext + 播放静音脉冲"预热"
     this.init();
     if(!this.ctx) return;
-    if(this.ctx.state==='suspended') this.resume();
-    if(!this.primed){
+    const wasSuspended=this.ctx.state==='suspended';
+    if(wasSuspended) this.resume();
+    if(!this.primed||wasSuspended){  // 微信 iOS 会反复挂起，每次从挂起恢复都要重新"预热"一次
       this.primed=true;
       const t=this.ctx.currentTime, s=this.ctx.createBufferSource();
       s.buffer=this.noise;
       const g=this.ctx.createGain();
-      g.gain.setValueAtTime(0.0001,t);      // 静音（不可闻），仅用于让 iOS 认可音频会话
-      g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+      g.gain.setValueAtTime(0.004,t);      // 极低音量（几乎不可闻），让 iOS/微信认可音频会话
+      g.gain.exponentialRampToValueAtTime(0.004,t+0.06);
       s.connect(g); g.connect(this.master);
-      s.start(t,0,0.05);
+      s.start(t,0,0.06);
     }
     if(G.debugAudio) console.log('[audio] 解锁后状态:', this.ctx.state);
   },
@@ -386,9 +387,17 @@ window.addEventListener('pointerup',e=>{ if(e.pointerId===input.id) release(); }
 window.addEventListener('pointercancel',e=>{ if(e.pointerId===input.id) release(); });
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{ if(input.active) e.preventDefault(); },{passive:false});
-// 移动端音频解锁兜底：部分安卓/iOS 浏览器只认 touchstart 手势
+// 移动端音频解锁兜底：部分安卓/iOS 浏览器只认 touchstart/touchend/click 手势
 document.addEventListener('touchstart',()=>AU.unlock(),{passive:true});
+document.addEventListener('touchend',()=>AU.unlock(),{passive:true});
+document.addEventListener('click',()=>AU.unlock());
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) AU.resume(); });
+// 微信内置浏览器专属：WeixinJSBridge 就绪前 WebAudio 被微信锁死，就绪后必须再解锁一次
+if(typeof WeixinJSBridge!=='undefined'){
+  try{ WeixinJSBridge.invoke('getNetworkType',{},()=>AU.unlock()); }catch(e){}
+}else{
+  document.addEventListener('WeixinJSBridgeReady',()=>AU.unlock(),false);
+}
 
 /* ================= 破坏 ================= */
 function addCracks(it){
