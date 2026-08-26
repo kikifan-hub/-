@@ -171,6 +171,12 @@ const AU={
     [523,659,784,1047].forEach((f,i)=>this.tone('triangle',f,0,0.18,0.14,now+i*0.09));
     this.burst(0.3,'highpass',4000,0,0.05,now+0.36);
   },
+  redeem(){ // 兑换成功：上行音阶 + 铃铛
+    const now=this.t();
+    [392,523,659,784].forEach((f,i)=>this.tone('triangle',f,0,0.12,0.11,now+i*0.07));
+    this.tone('sine',1568,0,0.35,0.09,now+0.32);
+    this.tone('sine',2093,0,0.45,0.07,now+0.46);
+  },
 };
 
 /* ================= 物品类型（程序绘制：多边形轮廓+细节） ================= */
@@ -409,30 +415,218 @@ const LEVELS=[
 const SAVE_KEY='zmt_save_v1';
 const padArr=(a,n)=>(a&&Array.isArray(a)?a.slice(0,n).concat(new Array(Math.max(0,n-a.length)).fill(0)):new Array(n).fill(0));
 const Save={
-  data:{score:0, stars:padArr(null,LEVELS.length), best:padArr(null,LEVELS.length), maxCombo:0},
+  data:{score:0, stars:padArr(null,LEVELS.length), best:padArr(null,LEVELS.length), maxCombo:0, gifts:[]},
   load(){
     try{
       const s=JSON.parse(localStorage.getItem(SAVE_KEY));
       if(s){ this.data.score=s.score||0; this.data.stars=padArr(s.stars,LEVELS.length);
-        this.data.best=padArr(s.best,LEVELS.length); this.data.maxCombo=s.maxCombo||0; }
+        this.data.best=padArr(s.best,LEVELS.length); this.data.maxCombo=s.maxCombo||0;
+        this.data.gifts=Array.isArray(s.gifts)?s.gifts:[]; }   // 旧存档无 gifts 字段 → 兼容
     }catch(e){}
   },
   save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(this.data)); }catch(e){} },
   addScore(n){ this.data.score+=n; },
   setStars(i,n){ if(n>this.data.stars[i]) this.data.stars[i]=n; },
   unlocked(i){ return i===0||this.data.stars[i-1]>=1; },
+  hasGift(id){ return this.data.gifts.indexOf(id)>=0; },
 };
 const TITLES=[
-  [100,'见习摔手'],[300,'玻璃杀手'],[600,'瓷器克星'],[1000,'家具噩梦'],
-  [1500,'职业砸场'],[2100,'拆迁学徒'],[2800,'拆家专员'],[3600,'破坏专家'],
-  [4500,'碎物艺术家'],[5500,'拆迁办主任'],[8000,'都市传说'],
-  [12000,'发泄大师'],[20000,'破坏之王'],[30000,'发泄之神'],
+  [100,'见习摔手',1],[300,'玻璃杀手',2],[600,'瓷器克星',3],[1000,'家具噩梦',4],
+  [1500,'职业砸场',5],[2100,'拆迁学徒',6],[2800,'拆家专员',7],[3600,'破坏专家',8],
+  [4500,'碎物艺术家',9],[5500,'拆迁办主任',10],[8000,'都市传说',12],
+  [12000,'发泄大师',15],[20000,'破坏之王',20],[30000,'发泄之神',25],
 ];
 function titleInfo(score){  // 累计积分 → 等级 + 称号
-  let lv=0, ti='初来乍到';
-  for(let i=0;i<TITLES.length;i++){ if(score>=TITLES[i][0]){ lv=i+1; ti=TITLES[i][1]; } }
-  return {lv, ti, cur:lv>0?TITLES[lv-1][0]:0, next:TITLES[lv]||null};
+  let idx=-1;
+  for(let i=0;i<TITLES.length;i++){ if(score>=TITLES[i][0]) idx=i; }
+  const t=TITLES[idx];
+  return {lv:idx<0?0:t[2], ti:idx<0?'初来乍到':t[1], cur:idx<0?0:t[0], next:TITLES[idx+1]||null};
 }
+
+/* ================= 礼品馆（12 件虚拟礼品：积分门槛兑换，兑换即赠称号徽章） =================
+   兑换规则：累计积分达到 price 即可领取，不扣分（累计积分=经验，见设计方案 6.3/6.4） */
+const GIFTS=[
+  {id:'duck', name:'橡胶小黄鸭', price:200, title:'摆设', desc:'浴缸里的减压神器', draw(c){
+    c.fillStyle='#ffd94d'; c.strokeStyle='#c98f1b'; c.lineWidth=2.5;
+    c.beginPath(); c.ellipse(0,6,26,18,0,0,Math.PI*2); c.fill(); c.stroke();       // 身体
+    c.beginPath(); c.arc(16,-14,13,0,Math.PI*2); c.fill(); c.stroke();             // 头
+    c.fillStyle='#ff9f1c';
+    c.beginPath(); c.moveTo(24,-20); c.lineTo(40,-15); c.lineTo(24,-9); c.closePath(); c.fill();  // 嘴
+    c.fillStyle='#333'; c.beginPath(); c.arc(20,-17,2,0,Math.PI*2); c.fill();      // 眼
+    c.strokeStyle='#e8b53a'; c.lineWidth=3;
+    c.beginPath(); c.arc(2,4,14,-0.4,1.2); c.stroke();                             // 翅膀
+  }},
+  {id:'trophy', name:'金边碎杯奖杯', price:500, title:'碎杯骑士', desc:'砸碎杯子的荣誉证明', draw(c){
+    const gold='#f5c542', dark='#c9971f';
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=2.5;
+    c.beginPath(); c.moveTo(-16,-30); c.lineTo(16,-30); c.lineTo(11,2); c.lineTo(-11,2); c.closePath(); c.fill(); c.stroke();  // 杯身
+    c.lineWidth=4;
+    c.beginPath(); c.arc(-16,-16,8,-Math.PI/2,Math.PI/2); c.stroke();               // 把手
+    c.beginPath(); c.arc(16,-16,8,Math.PI/2,-Math.PI/2); c.stroke();
+    c.strokeStyle='rgba(90,60,10,0.8)'; c.lineWidth=1.5;                            // 碎杯裂纹！
+    c.beginPath(); c.moveTo(-6,-26); c.lineTo(-2,-16); c.lineTo(-8,-10); c.moveTo(-2,-16); c.lineTo(3,-8); c.stroke();
+    c.strokeStyle='#ffe9a3'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(-10,-24); c.lineTo(-7,-6); c.stroke();                  // 高光
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=2.5;
+    c.fillRect(-9,4,18,6); c.strokeRect(-9,4,18,6);                                 // 底座
+    c.fillRect(-15,10,30,7); c.strokeRect(-15,10,30,7);
+    c.fillStyle='#fff3c4'; c.font='10px sans-serif'; c.textAlign='center';
+    c.fillText('★',0,-14);
+  }},
+  {id:'safe', name:'迷你保险箱', price:1000, title:'拆迁学徒', desc:'练手专用 · 砸不烂', draw(c){
+    c.fillStyle='#5a6672'; c.strokeStyle='#333d47'; c.lineWidth=2.5;
+    c.beginPath(); roundRect(c,-24,-26,48,44,6); c.fill(); c.stroke();
+    c.strokeStyle='#333d47'; c.lineWidth=2; c.strokeRect(-18,-13,36,26);            // 门缝
+    c.fillStyle='#d8a13c'; c.strokeStyle='#8a641f'; c.lineWidth=1.5;
+    c.beginPath(); c.arc(0,0,8,0,Math.PI*2); c.fill(); c.stroke();                  // 转盘
+    c.fillStyle='#5a6672'; c.beginPath(); c.arc(0,0,3,0,Math.PI*2); c.fill();
+    c.beginPath(); c.moveTo(0,-6); c.lineTo(0,-1); c.stroke();
+    c.strokeStyle='#9aa4ae'; c.lineWidth=3;
+    c.beginPath(); c.arc(0,8,5,Math.PI,0); c.stroke();                              // 把手
+  }},
+  {id:'cat', name:'陶瓷猫咪', price:2000, title:'瓷器杀手', desc:'优雅与易碎的化身', draw(c){
+    c.fillStyle='#9ec5e8'; c.strokeStyle='#5b82a8'; c.lineWidth=2.5;
+    c.beginPath(); c.moveTo(-16,-22); c.lineTo(-10,-38); c.lineTo(0,-26); c.closePath(); c.fill(); c.stroke();  // 耳朵
+    c.beginPath(); c.moveTo(0,-26); c.lineTo(10,-38); c.lineTo(16,-22); c.closePath(); c.fill(); c.stroke();
+    c.beginPath(); c.arc(0,-14,15,0,Math.PI*2); c.fill(); c.stroke();               // 头
+    c.beginPath(); c.ellipse(0,10,22,17,0,0,Math.PI*2); c.fill(); c.stroke();       // 身体
+    c.lineWidth=6; c.beginPath(); c.arc(24,6,12,0.2,1.9); c.stroke();               // 尾巴
+    c.fillStyle='#5b82a8';
+    c.beginPath(); c.arc(-5,-17,2,0,Math.PI*2); c.arc(5,-17,2,0,Math.PI*2); c.fill();   // 眼睛
+    c.lineWidth=1.5; c.beginPath(); c.arc(0,-12,2.5,0,Math.PI*2); c.stroke();       // 鼻子
+    c.beginPath(); c.moveTo(-3,-8); c.lineTo(-3,-5); c.moveTo(3,-8); c.lineTo(3,-5); c.stroke();
+    c.lineWidth=2;                                                                  // 陶瓷花纹
+    c.beginPath(); c.arc(0,8,12,0.5,1.6); c.stroke();
+    c.beginPath(); c.arc(0,8,12,2.4,3.4); c.stroke();
+  }},
+  {id:'glass', name:'防弹玻璃展板', price:4000, title:'玻璃终结者', desc:'上面有一个弹痕', draw(c){
+    c.strokeStyle='#7f8c96'; c.lineWidth=4;
+    c.beginPath(); c.moveTo(0,-26); c.lineTo(0,22); c.stroke();                     // 支架
+    c.fillStyle='#7f8c96'; c.beginPath(); c.ellipse(0,22,20,6,0,0,Math.PI*2); c.fill();
+    c.fillStyle='rgba(190,227,247,0.55)'; c.strokeStyle='rgba(90,130,160,0.9)'; c.lineWidth=3;
+    c.beginPath(); roundRect(c,-34,-36,68,52,8); c.fill(); c.stroke();              // 玻璃面板
+    c.strokeStyle='rgba(255,255,255,0.8)'; c.lineWidth=5;
+    c.beginPath(); c.moveTo(-28,-30); c.lineTo(-10,-36); c.stroke();                // 高光
+    c.lineWidth=2.5; c.beginPath(); c.moveTo(16,10); c.lineTo(30,14); c.stroke();
+    c.strokeStyle='rgba(255,255,255,0.95)'; c.lineWidth=1.6;                        // 弹痕星裂
+    c.beginPath();
+    [[0,1],[0.95,0.31],[0.59,-0.81],[-0.59,-0.81],[-0.95,0.31]].forEach((q,i)=>{
+      if(i===0) c.moveTo(-3+q[0]*6,3+q[1]*6); else c.lineTo(-3+q[0]*9,3+q[1]*9);
+    });
+    c.stroke();
+    c.fillStyle='#fff'; c.beginPath(); c.arc(-3,3,2.5,0,Math.PI*2); c.fill();
+  }},
+  {id:'hammer', name:'鎏金大锤', price:8000, title:'职业砸场', desc:'砸场人的信仰之锤', draw(c){
+    const gold='#e8b93c', dark='#a97e1c';
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=2.5;                          // 锤头
+    c.beginPath(); roundRect(c,-34,-20,50,26,6); c.fill(); c.stroke();
+    c.beginPath(); roundRect(c,-40,-22,14,30,5); c.fill(); c.stroke();
+    c.beginPath(); roundRect(c,8,-22,14,30,5); c.fill(); c.stroke();
+    c.strokeStyle='#ffe9a3'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(-26,-14); c.lineTo(-2,-14); c.stroke();                 // 高光
+    c.strokeStyle='#8a5c31'; c.lineWidth=7;
+    c.beginPath(); c.moveTo(2,-4); c.lineTo(16,32); c.stroke();                     // 柄
+    c.strokeStyle='#a5713f'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(3,-2); c.lineTo(15,29); c.stroke();
+    c.strokeStyle=gold; c.lineWidth=2.5;                                            // 鎏金环
+    c.beginPath(); c.moveTo(-14,-4); c.lineTo(-14,8); c.stroke();
+    c.beginPath(); c.moveTo(0,-4); c.lineTo(0,8); c.stroke();
+  }},
+  {id:'lamp', name:'水晶吊灯', price:15000, title:'灯光毁灭者', desc:'碎成一地星星', draw(c){
+    c.strokeStyle='#9aa4ae'; c.lineWidth=2.5;
+    c.beginPath(); c.moveTo(0,-44); c.lineTo(0,-28); c.stroke();                    // 链条
+    c.strokeStyle='#c9971f'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(0,-28); c.lineTo(0,-20); c.stroke();                    // 主杆
+    c.beginPath(); c.moveTo(0,-20); c.quadraticCurveTo(-16,-26,-26,-16); c.stroke();    // 蜡烛臂
+    c.beginPath(); c.moveTo(0,-20); c.quadraticCurveTo(16,-26,26,-16); c.stroke();
+    c.beginPath(); c.moveTo(0,-20); c.lineTo(0,-6); c.stroke();
+    c.fillStyle='#ffd166';                                                          // 火苗
+    c.beginPath(); c.ellipse(-26,-22,3,6,0,0,Math.PI*2); c.fill();
+    c.beginPath(); c.ellipse(26,-22,3,6,0,0,Math.PI*2); c.fill();
+    c.beginPath(); c.ellipse(0,-12,3,6,0,0,Math.PI*2); c.fill();
+    const dia=(x,y,s)=>{ c.fillStyle='rgba(190,227,247,0.9)'; c.strokeStyle='rgba(120,170,205,0.9)'; c.lineWidth=1.5;
+      c.beginPath(); c.moveTo(x,y-s); c.lineTo(x+s*0.7,y); c.lineTo(x,y+s); c.lineTo(x-s*0.7,y); c.closePath(); c.fill(); c.stroke(); };
+    dia(-26,-12,9); dia(26,-12,9); dia(0,-2,10);                                    // 水晶坠
+    dia(-13,-2,7); dia(13,-2,7); dia(0,8,8);
+    c.fillStyle='#c9971f'; c.beginPath(); c.arc(0,18,4,0,Math.PI*2); c.fill();      // 底部金球
+  }},
+  {id:'chair', name:'老板椅（可砸）', price:25000, title:'打工人之光', desc:'砸掉工位的象征', draw(c){
+    c.fillStyle='#8a2f2b'; c.strokeStyle='#5f1f1c'; c.lineWidth=2.5;
+    c.beginPath(); roundRect(c,-14,-50,28,10,5); c.fill(); c.stroke();              // 头枕
+    c.beginPath(); roundRect(c,-22,-40,44,40,8); c.fill(); c.stroke();              // 靠背
+    c.beginPath(); roundRect(c,-24,-2,48,14,6); c.fill(); c.stroke();               // 坐垫
+    c.lineWidth=6;                                                                  // 扶手
+    c.beginPath(); c.moveTo(-26,-2); c.lineTo(-26,16); c.stroke();
+    c.beginPath(); c.moveTo(26,-2); c.lineTo(26,16); c.stroke();
+    c.fillStyle='#9aa4ae'; c.fillRect(-3,12,6,10);                                  // 气杆
+    c.strokeStyle='#3f4a54'; c.lineWidth=4;                                         // 五星脚+轮
+    [[-18,30],[18,30],[0,36]].forEach(q=>{
+      c.beginPath(); c.moveTo(0,22); c.lineTo(q[0],q[1]); c.stroke();
+      c.fillStyle='#222'; c.beginPath(); c.arc(q[0],q[1],4,0,Math.PI*2); c.fill();
+    });
+  }},
+  {id:'champagne', name:'香槟塔模型', price:40000, title:'宴会终结者', desc:'塔倒的那一刻', draw(c){
+    const gl=(x,y)=>{                                                               // 高脚杯
+      c.fillStyle='rgba(224,242,250,0.95)'; c.strokeStyle='#9db8c8'; c.lineWidth=1.8;
+      c.beginPath(); c.moveTo(x-7,y-13); c.lineTo(x+7,y-13); c.lineTo(x+4.5,y-2); c.lineTo(x-4.5,y-2); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle='#ffd166'; c.fillRect(x-5,y-10,10,2.5);                           // 香槟
+      c.beginPath(); c.moveTo(x,y-2); c.lineTo(x,y+15); c.stroke();
+      c.beginPath(); c.ellipse(x,y+17,6.5,2.2,0,0,Math.PI*2); c.stroke();
+    };
+    c.fillStyle='#e8b93c'; c.beginPath(); roundRect(c,-34,64,68,6,3); c.fill();     // 底托盘
+    [[-24,-8,8,24],[-16,0,16],[-8,8],[0]].forEach((row,i)=>{                        // 4-3-2-1 金字塔
+      row.forEach(x=>gl(x,45-i*18));
+    });
+  }},
+  {id:'vault', name:'黄金保险箱', price:65000, title:'金库爆破手', desc:'金灿灿的终极目标', draw(c){
+    const gold='#f0c040', dark='#b08a1e';
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=3;
+    c.beginPath(); roundRect(c,-26,-28,52,48,7); c.fill(); c.stroke();
+    c.strokeStyle='#fff3c4'; c.lineWidth=3;
+    c.beginPath(); c.moveTo(-18,-22); c.lineTo(18,-22); c.stroke();                 // 光泽
+    c.strokeStyle=dark; c.lineWidth=2; c.strokeRect(-20,-22,40,36);                 // 门缝
+    c.fillStyle=dark; c.beginPath(); c.arc(0,-4,9,0,Math.PI*2); c.fill();           // 转盘
+    c.fillStyle=gold; c.beginPath(); c.arc(0,-4,6,0,Math.PI*2); c.fill();
+    c.fillStyle=dark; c.beginPath(); c.arc(0,-4,2.5,0,Math.PI*2); c.fill();
+    c.strokeStyle=dark; c.lineWidth=4;                                              // 把手
+    c.beginPath(); c.moveTo(-12,12); c.lineTo(12,12); c.stroke();
+    c.fillStyle=dark;
+    [[-20,-22],[20,-22],[-20,20],[20,20]].forEach(q=>{ c.beginPath(); c.arc(q[0],q[1],2,0,Math.PI*2); c.fill(); });   // 铆钉
+    c.fillStyle='#fff3c4'; c.font='12px sans-serif'; c.textAlign='center';
+    c.fillText('✦',-20,-34);
+  }},
+  {id:'banner', name:'拆迁办锦旗', price:100000, title:'拆迁办主任', desc:'官方认证拆家资质', draw(c){
+    c.fillStyle='#c0392b'; c.strokeStyle='#8a2620'; c.lineWidth=2.5;
+    c.beginPath(); roundRect(c,-30,-32,60,44,4); c.fill(); c.stroke();              // 旗面
+    c.strokeStyle='#e8b93c'; c.lineWidth=3;
+    c.beginPath(); roundRect(c,-26,-28,52,36,3); c.stroke();                        // 金边
+    c.fillStyle='#e8b93c';
+    for(let i=0;i<6;i++){ c.fillRect(-26+i*9.5,14,5,10); }                          // 流苏
+    c.fillStyle='#ffd166'; c.font='900 20px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+    c.fillText('拆',0,-9);
+    c.fillStyle='#e8b93c'; c.fillRect(-34,-36,68,5);                                // 挂轴
+    c.strokeStyle='#8a641f'; c.lineWidth=1.5; c.strokeRect(-34,-36,68,5);
+  }},
+  {id:'statue', name:'传奇发泄之神像', price:150000, title:'发泄之神', desc:'万物皆可砸的神位', draw(c){
+    const gold='#e8b93c', dark='#a97e1c';
+    c.fillStyle='#8d97a6'; c.fillRect(-16,8,32,6);                                  // 底座
+    c.fillStyle='#7a8594'; c.strokeStyle='#4a5260'; c.lineWidth=2.5;
+    c.fillRect(-20,14,40,8); c.strokeRect(-20,14,40,8);
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=2.5;
+    c.beginPath(); c.arc(0,-26,10,0,Math.PI*2); c.fill(); c.stroke();               // 头
+    c.beginPath(); c.moveTo(-14,8); c.lineTo(-8,-18); c.lineTo(8,-18); c.lineTo(14,8); c.closePath(); c.fill(); c.stroke();  // 披风身体
+    c.lineWidth=6;                                                                  // 举锤手臂
+    c.beginPath(); c.moveTo(10,-14); c.lineTo(24,-30); c.stroke();
+    c.strokeStyle=dark; c.lineWidth=2;
+    c.beginPath(); c.moveTo(10,-14); c.lineTo(24,-30); c.stroke();
+    c.fillStyle=gold; c.strokeStyle=dark; c.lineWidth=2;                            // 手中小锤
+    c.beginPath(); roundRect(c,16,-38,18,10,3); c.fill(); c.stroke();
+    c.strokeStyle='#fff3c4'; c.lineWidth=2;                                         // 光环
+    c.beginPath(); c.arc(0,-26,18,-2.4,-0.6); c.stroke();
+    c.fillStyle='#5f1f1c';
+    c.beginPath(); c.arc(-4,-28,1.8,0,Math.PI*2); c.arc(4,-28,1.8,0,Math.PI*2); c.fill();   // 眼睛
+  }},
+];
 
 function makeItems(){
   return LEVELS[G.level].items.map(d=>{
@@ -459,6 +653,7 @@ const G={
   breakTimes:[], lastRealDt:0, btn1:null, btn2:null, btn3:null,
   debugAudio: location.search.indexOf('debug')>=0,   // 加 ?debug 可在控制台看音频状态
   level:0, screen:'select', cards:[], backBtn:null, panelCount:0, banked:0, lastAdd:0,
+  navBtns:[], giftCards:[], toast:'', toastT:0,      // M3：底部导航 / 礼品卡 / 兑换提示
 };
 
 /* ================= 画布 ================= */
@@ -486,9 +681,21 @@ function panelHit(p){ return inRect(p,G.btn1)||inRect(p,G.btn2)||inRect(p,G.btn3
 cv.addEventListener('pointerdown',e=>{
   AU.unlock();
   const p=toCanvas(e);
-  if(G.screen==='select'){               // 选关界面：点卡片
+  if(G.screen==='select'){               // 选关界面：底部导航 + 点卡片
+    const n=G.navBtns.findIndex(r=>inRect(p,r));
+    if(n>=0){ AU.ui(); openScreen(['shop','hall','titles'][n]); return; }
     const i=G.cards.findIndex(r=>inRect(p,r));
     if(i>=0){ AU.ui(); if(Save.unlocked(i)) startLevel(i); }
+    return;
+  }
+  if(G.screen==='shop'){                 // 礼品馆：返回 + 点礼品卡兑换
+    if(inRect(p,G.backBtn)){ AU.ui(); showLevelSelect(); return; }
+    const i=G.giftCards.findIndex(r=>inRect(p,r));
+    if(i>=0) tryRedeem(i);
+    return;
+  }
+  if(G.screen==='hall'||G.screen==='titles'){   // 荣誉室 / 称号：仅返回按钮
+    if(inRect(p,G.backBtn)){ AU.ui(); showLevelSelect(); }
     return;
   }
   if(G.panel){                           // 结算面板
@@ -1053,6 +1260,9 @@ function render(t){
   const c=ctx;
   c.clearRect(0,0,W,H);
   if(G.screen==='select'){ drawSelect(c,t); return; }
+  if(G.screen==='shop'){ drawShop(c,t); return; }
+  if(G.screen==='hall'){ drawHall(c,t); return; }
+  if(G.screen==='titles'){ drawTitles(c,t); return; }
   c.save();
   if(G.shakeAmp>0.2){                       // 震屏（实时衰减）
     G.shakeAmp*=Math.exp(-6*G.lastRealDt);
@@ -1075,48 +1285,76 @@ function render(t){
   if(G.hintT>0&&!G.panel) drawHint(c);
   if(G.panel) drawPanel(c);
 }
-function drawSelect(c,t){
+function drawBG(c){   // 菜单系界面共用深色渐变背景
   const g=c.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#26263a'); g.addColorStop(0.55,'#1d1d2e'); g.addColorStop(1,'#14141f');
   c.fillStyle=g; c.fillRect(0,0,W,H);
+}
+function drawHeader(c,icon,title,sub){   // 菜单系界面共用顶栏（返回按钮+标题）
+  G.backBtn={x:14,y:14,w:34,h:34};
+  c.fillStyle='rgba(255,255,255,0.16)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
+  c.strokeStyle='rgba(255,255,255,0.45)'; c.lineWidth=2; c.stroke();
+  c.fillStyle='#fff'; c.font='800 22px "PingFang SC",sans-serif';
+  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,27);
+  c.textAlign='left'; c.textBaseline='top';
+  c.fillStyle='#fff'; c.font='800 22px "PingFang SC",sans-serif';
+  c.fillText(icon+' '+title, 58, 14);
+  c.fillStyle='rgba(255,255,255,0.55)'; c.font='600 12px "PingFang SC",sans-serif';
+  c.fillText(sub, 60, 46);
+}
+function drawToast(c){   // 兑换成功提示条（淡入淡出）
+  if(G.toastT<=0||!G.toast) return;
+  const fade=G.toastT>2.6?(3.2-G.toastT)/0.6:clamp(G.toastT/0.6,0,1);
+  c.save(); c.globalAlpha=clamp(fade,0,1);
+  c.font='700 15px "PingFang SC",sans-serif';
+  const w=c.measureText(G.toast).width+40;
+  c.fillStyle='rgba(20,20,32,0.92)';
+  c.beginPath(); roundRect(c,(W-w)/2,116,w,44,22); c.fill();
+  c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=1.5; c.stroke();
+  c.fillStyle='#ffd166'; c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(G.toast, W/2, 139);
+  c.restore();
+}
+function drawSelect(c,t){
+  drawBG(c);
   c.textAlign='center'; c.textBaseline='middle';
   // 标题
   c.font='800 40px "PingFang SC",sans-serif'; c.fillStyle='#fff';
-  c.fillText('🔨 砸个痛快', W/2, 76);
+  c.fillText('🔨 砸个痛快', W/2, 62);
   c.font='600 13px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.55)';
-  c.fillText('万物皆可砸 · 砸得越响分越高', W/2, 110);
+  c.fillText('万物皆可砸 · 砸得越响分越高', W/2, 96);
   // 总积分 + 称号徽章
   c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
-  c.fillText('总积分  '+Save.data.score, W/2, 148);
+  c.fillText('总积分  '+Save.data.score, W/2, 128);
   const ti=titleInfo(Save.data.score);
   const bw=168, bh=30;
   c.fillStyle='rgba(255,209,102,0.15)';
-  c.beginPath(); roundRect(c,W/2-bw/2,164,bw,bh,15); c.fill();
+  c.beginPath(); roundRect(c,W/2-bw/2,142,bw,bh,15); c.fill();
   c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
   c.font='700 14px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
-  c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2, 180);
+  c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2, 158);
   // 下一称号进度
   if(ti.next){
     const pct=clamp((Save.data.score-ti.cur)/(ti.next[0]-ti.cur),0,1);
     const pw=260;
-    c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,W/2-pw/2,200,pw,8,4); c.fill();
-    c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,W/2-pw/2,200,Math.max(8,pw*pct),8,4); c.fill();
+    c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,W/2-pw/2,180,pw,8,4); c.fill();
+    c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,W/2-pw/2,180,Math.max(8,pw*pct),8,4); c.fill();
     c.textAlign='left'; c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.5)';
-    c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2-pw/2, 214);
+    c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2-pw/2, 192);
     c.textAlign='center';
   }
   // 关卡卡片
   G.cards=[];
-  const cw=W-40, ch=160, cx0=20, cy0=240;
+  const cw=W-40, ch=148, cx0=20, cy0=212;
   for(let i=0;i<LEVELS.length;i++){
-    const r={x:cx0,y:cy0+i*(ch+14),w:cw,h:ch};
+    const r={x:cx0,y:cy0+i*(ch+12),w:cw,h:ch};
     G.cards.push(r);
     const L=LEVELS[i], un=Save.unlocked(i);
     c.fillStyle=un?'#2b2b3d':'#232330';
     c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,18); c.fill();
     c.strokeStyle='rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
     // 迷你房间预览（用关卡主题色绘制）
-    const px=r.x+16, py=r.y+18, pw2=116, ph2=124;
+    const px=r.x+16, py=r.y+12, pw2=116, ph2=124;
     c.save(); c.beginPath(); roundRect(c,px,py,pw2,ph2,12); c.clip();
     const rg=c.createLinearGradient(0,py,0,py+ph2*0.68);
     rg.addColorStop(0,L.theme.wallTop); rg.addColorStop(1,L.theme.wallBot);
@@ -1163,13 +1401,209 @@ function drawSelect(c,t){
       c.fillText('通关上一关解锁', r.x+r.w-42, r.y+r.h/2+34);
     }
   }
+  // 底部导航：礼品馆 / 荣誉室 / 称号
+  G.navBtns=[];
+  const nw=140, ngap=10, nx0=(W-3*nw-2*ngap)/2, ny=696, nh=52;
+  [['🎁','礼品馆'],['🏆','荣誉室'],['🏅','称号']].forEach((b,i)=>{
+    const r={x:nx0+i*(nw+ngap),y:ny,w:nw,h:nh};
+    G.navBtns.push(r);
+    c.fillStyle='#2b2b3d'; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,26); c.fill();
+    c.strokeStyle='rgba(255,209,102,0.4)'; c.lineWidth=2; c.stroke();
+    c.textAlign='center'; c.font='700 16px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+    c.fillText(b[0]+' '+b[1], r.x+r.w/2, r.y+r.h/2+1);
+  });
   c.textAlign='center';
   c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.4)';
   c.fillText('通关即可解锁下一关 · 存档自动保存在本机', W/2, H-16);
 }
+function drawShop(c,t){   // 礼品馆：12 件礼品积分门槛兑换
+  drawBG(c);
+  drawHeader(c,'🎁','礼品馆','累计积分达到门槛即可领取 · 不扣积分');
+  G.giftCards=[];
+  const cw=214, ch=118, gap=10, x0=(W-2*cw-gap)/2, y0=82;
+  for(let i=0;i<GIFTS.length;i++){
+    const g=GIFTS[i], col=i%2, row=(i/2)|0;
+    const r={x:x0+col*(cw+gap), y:y0+row*(ch+10), w:cw, h:ch};
+    G.giftCards.push(r);
+    const owned=Save.hasGift(g.id), afford=Save.data.score>=g.price;
+    c.fillStyle=owned?'rgba(126,224,129,0.13)':'#2b2b3d';
+    c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,14); c.fill();
+    c.strokeStyle=owned?'rgba(126,224,129,0.55)':'rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
+    // 礼品图（左上区域，未达标变暗）
+    c.save(); c.translate(r.x+46, r.y+52);
+    if(!owned&&!afford) c.globalAlpha=0.32;
+    c.scale(0.62,0.62); g.draw(c);
+    c.restore();
+    // 名称 / 门槛 / 称号 / 描述
+    c.textAlign='left'; c.textBaseline='top';
+    c.font='800 15px "PingFang SC",sans-serif';
+    c.fillStyle=owned?'#7ee081':(afford?'#fff':'rgba(255,255,255,0.55)');
+    c.fillText(g.name, r.x+92, r.y+11);
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+    c.fillText('积分门槛 '+g.price, r.x+92, r.y+32);
+    c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
+    c.fillText('称号「'+g.title+'」', r.x+92, r.y+50);
+    c.fillStyle='rgba(255,255,255,0.35)';
+    c.fillText(g.desc, r.x+92, r.y+66);
+    // 状态 / 领取按钮
+    c.textBaseline='middle';
+    if(owned){
+      c.fillStyle='#7ee081'; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='right';
+      c.fillText('✓ 已领取', r.x+cw-12, r.y+ch-21);
+    }else if(afford){
+      const bx=r.x+cw-66, by=r.y+ch-38, bw2=54, bh2=26;
+      c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,bx,by,bw2,bh2,13); c.fill();
+      c.fillStyle='#23232f'; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='center';
+      c.fillText('领取', bx+bw2/2, by+bh2/2+1);
+    }else{
+      c.textAlign='right'; c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.4)';
+      c.fillText('还差 '+(g.price-Save.data.score)+' 分', r.x+cw-12, r.y+ch-21);
+    }
+  }
+  drawToast(c);
+}
+function drawHall(c,t){   // 荣誉室：已兑换礼品陈列 + 各关最佳 + 称号徽章墙
+  drawBG(c);
+  drawHeader(c,'🏆','荣誉室','已兑换礼品陈列 · 各关最佳成绩 · 称号徽章');
+  // 陈列台：4 列 × 3 行（12 个展位）
+  const cols=4, cw=106, ch=112, gap=10, x0=(W-cols*cw-(cols-1)*gap)/2, y0=78;
+  for(let i=0;i<12;i++){
+    const col=i%4, row=(i/4)|0, cx=x0+col*(cw+gap)+cw/2, by=y0+row*(ch+12);
+    c.fillStyle='#3a3a4c';                                          // 底座
+    c.beginPath(); roundRect(c,x0+col*(cw+gap),by+74,cw,30,8); c.fill();
+    c.fillStyle='#2b2b3d'; c.fillRect(cx-3,by+62,6,14);             // 底座颈
+    if(Save.hasGift(GIFTS[i].id)){
+      c.save(); c.translate(cx,by+44); c.scale(0.72,0.72); GIFTS[i].draw(c); c.restore();
+      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
+      c.fillText(GIFTS[i].name, cx, by+98);
+    }else{                                                          // 空展位：虚线问号
+      c.save(); c.translate(cx,by+40);
+      c.setLineDash([4,4]); c.strokeStyle='rgba(255,255,255,0.25)'; c.lineWidth=1.5;
+      c.beginPath(); c.arc(0,0,20,0,Math.PI*2); c.stroke(); c.setLineDash([]);
+      c.fillStyle='rgba(255,255,255,0.3)'; c.font='800 20px "PingFang SC",sans-serif';
+      c.textAlign='center'; c.textBaseline='middle'; c.fillText('?',0,1);
+      c.restore();
+      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+      c.fillText(GIFTS[i].price+' 分', cx, by+98);
+    }
+  }
+  const y2=y0+3*(ch+12)+8;
+  // 各关最佳成绩
+  c.textAlign='left'; c.textBaseline='top';
+  c.font='800 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('各关最佳成绩', 22, y2);
+  for(let i=0;i<LEVELS.length;i++){
+    const y=y2+32+i*36;
+    c.fillStyle='rgba(255,255,255,0.06)';
+    c.beginPath(); roundRect(c,22,y-22,436,30,8); c.fill();
+    c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 13px "PingFang SC",sans-serif'; c.textBaseline='middle';
+    c.fillText('第 '+(i+1)+' 关 · '+LEVELS[i].name, 34, y);
+    for(let s=0;s<3;s++){ c.font='15px sans-serif'; c.fillStyle=s<Save.data.stars[i]?'#ffd166':'rgba(255,255,255,0.15)'; c.fillText('★', 176+s*20, y); }
+    c.textAlign='right';
+    if(Save.data.best[i]){ c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.fillText('最佳 '+Save.data.best[i]+' 分', 446, y); }
+    else { c.fillStyle='rgba(255,255,255,0.35)'; c.font='600 12px "PingFang SC",sans-serif'; c.fillText('尚未通关', 446, y); }
+    c.textAlign='left';
+  }
+  // 称号徽章墙
+  const y3=y2+32+LEVELS.length*36+14;
+  c.font='800 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('称号徽章', 22, y3);
+  const owned=GIFTS.filter(g=>Save.hasGift(g.id));
+  if(owned.length){
+    let bx=22, by=y3+30;
+    owned.forEach(g=>{
+      const w=132, h=34;
+      if(bx+w>W-22){ bx=22; by+=42; }
+      c.fillStyle='rgba(255,209,102,0.14)';
+      c.beginPath(); roundRect(c,bx,by,w,h,17); c.fill();
+      c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
+      c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillText('🏅 '+g.title, bx+w/2, by+h/2+1);
+      bx+=w+10;
+    });
+  }else{
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+    c.fillText('在礼品馆兑换礼品，徽章会挂在这里', 22, y3+32);
+  }
+  drawToast(c);
+}
+function drawTitles(c,t){   // 称号：当前等级进度 + 全部称号列表 + 礼品徽章
+  drawBG(c);
+  const ti=titleInfo(Save.data.score);
+  drawHeader(c,'🏅','称号','Lv.'+ti.lv+' '+ti.ti+' · 累计积分即经验');
+  // 当前称号卡
+  const cy0=78;
+  c.fillStyle='#2b2b3d'; c.beginPath(); roundRect(c,22,cy0,436,106,16); c.fill();
+  c.strokeStyle='rgba(255,209,102,0.45)'; c.lineWidth=2; c.stroke();
+  c.textAlign='center'; c.textBaseline='middle';
+  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+  c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2, cy0+40);
+  if(ti.next){
+    const pct=clamp((Save.data.score-ti.cur)/(ti.next[0]-ti.cur),0,1);
+    const pw=380, px=(W-pw)/2, py=cy0+58;
+    c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,px,py,pw,10,5); c.fill();
+    c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,px,py,Math.max(10,pw*pct),10,5); c.fill();
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
+    c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2, py+26);
+  }else{
+    c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#7ee081';
+    c.fillText('已达最高称号 · 发泄之神登顶！', W/2, cy0+74);
+  }
+  // 全部称号（两列）
+  const tw=212, th=38, gap=10, x0=(W-2*tw-gap)/2, y0=cy0+124;
+  TITLES.forEach((T,i)=>{
+    const col=i%2, row=(i/2)|0;
+    const rx=x0+col*(tw+gap), ry=y0+row*(th+8);
+    const got=Save.data.score>=T[0];
+    c.fillStyle=got?'rgba(255,209,102,0.12)':'rgba(255,255,255,0.04)';
+    c.beginPath(); roundRect(c,rx,ry,tw,th,9); c.fill();
+    c.strokeStyle=got?'rgba(255,209,102,0.4)':'rgba(255,255,255,0.08)'; c.lineWidth=1.5; c.stroke();
+    c.fillStyle=got?'#ffd166':'rgba(255,255,255,0.2)';
+    c.beginPath(); c.arc(rx+15,ry+th/2,4,0,Math.PI*2); c.fill();
+    c.textAlign='left'; c.textBaseline='middle';
+    c.font=got?'800 13px "PingFang SC",sans-serif':'600 13px "PingFang SC",sans-serif';
+    c.fillStyle=got?'#ffd166':'rgba(255,255,255,0.4)';
+    c.fillText(T[1], rx+30, ry+th/2+1);
+    c.textAlign='right'; c.font='600 11px "PingFang SC",sans-serif';
+    c.fillStyle=got?'rgba(255,255,255,0.55)':'rgba(255,255,255,0.28)';
+    c.fillText(T[0]+' 分', rx+tw-10, ry+th/2+1);
+  });
+  // 礼品称号徽章
+  const y1=y0+7*(th+8)+16;
+  c.textAlign='left'; c.textBaseline='top';
+  c.font='800 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('礼品称号徽章', 22, y1);
+  const owned=GIFTS.filter(g=>Save.hasGift(g.id));
+  if(owned.length){
+    let bx=22, by=y1+30;
+    owned.forEach(g=>{
+      const w=132, h=32;
+      if(bx+w>W-22){ bx=22; by+=40; }
+      c.fillStyle='rgba(255,209,102,0.14)';
+      c.beginPath(); roundRect(c,bx,by,w,h,16); c.fill();
+      c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
+      c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillText('🏅 '+g.title, bx+w/2, by+h/2+1);
+      bx+=w+10;
+    });
+  }else{
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+    c.fillText('在礼品馆兑换礼品可获赠称号徽章', 22, y1+32);
+  }
+  drawToast(c);
+}
 function startLevel(n){
   G.level=n; G.screen='play';
   resetLevel();
+}
+function openScreen(s){ G.screen=s; }   // 选关 → 礼品馆/荣誉室/称号
+function tryRedeem(i){                  // 兑换礼品：积分达标即可领取（不扣分），赠称号徽章
+  const g=GIFTS[i];
+  if(Save.hasGift(g.id)||Save.data.score<g.price){ AU.ui(); return; }
+  Save.data.gifts.push(g.id); Save.save();
+  AU.redeem();
+  G.toast='🎁 已领取「'+g.name+'」 获得称号 '+g.title; G.toastT=3.2;
+  if(navigator.vibrate) navigator.vibrate([30,50,30,50,60]);
 }
 function showLevelSelect(){
   G.screen='select'; G.panel=false;
@@ -1196,6 +1630,7 @@ function frame(now){
   requestAnimationFrame(frame);
   let realDt=Math.min((now-last)/1000,1/30); last=now;
   G.lastRealDt=realDt;
+  if(G.toastT>0) G.toastT-=realDt;          // 兑换提示计时
   if(G.freezeT>0) G.freezeT-=realDt;        // 顿帧：世界暂停，画面照常渲染
   else if(G.screen==='play') step(realDt*G.timeScale, realDt);   // 慢动作：物理时间缩放
   render(now/1000);
