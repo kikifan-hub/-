@@ -26,6 +26,7 @@ const W=480, H=854, GROUND=720, GRAV=2200;
 const MULT=[1,1.2,1.5,2,3,5];          // 连击倍率
 const COMBO_WINDOW=3;                  // 连击窗口（秒）
 const PASS_RATE=0.6;                   // 通关所需砸碎率
+const VERSION='1.1';                   // M5 UI 改版
 
 /* ================= 工具 ================= */
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -41,6 +42,28 @@ function polyPath(c,pts){ c.beginPath(); c.moveTo(pts[0][0],pts[0][1]); for(let 
 function roundRect(c,x,y,w,h,r){
   c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
   c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+}
+
+/* ================= M5 UI 设计系统（深紫夜幕 + 金色/珊瑚高亮） ================= */
+const UI={
+  bg0:'#2b2440', bg1:'#14111d',
+  card:'#362d50', card2:'#2a2340',
+  line:'rgba(255,255,255,0.1)',
+  gold:'#ffd166', goldD:'#c9971f',
+  coral:'#ff7a59', green:'#7ee081', blue:'#9fd8ef',
+  sub:'rgba(255,255,255,0.62)', dim:'rgba(255,255,255,0.38)',
+};
+function uiCard(c,r,opt){   // 通用卡片：渐变底 + 描边 + 顶部高光（opt:{fill,fill2,line,gold,flat,r}）
+  opt=opt||{};
+  const g=c.createLinearGradient(0,r.y,0,r.y+r.h);
+  g.addColorStop(0,opt.fill||UI.card); g.addColorStop(1,opt.fill2||opt.fill||UI.card2);
+  c.fillStyle=g; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,opt.r||18); c.fill();
+  c.strokeStyle=opt.line||UI.line; c.lineWidth=opt.gold?2.5:1.5; c.stroke();
+  if(!opt.flat){
+    const hg=c.createLinearGradient(0,r.y,0,r.y+r.h*0.4);
+    hg.addColorStop(0,'rgba(255,255,255,0.07)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+    c.fillStyle=hg; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,opt.r||18); c.fill();
+  }
 }
 
 /* ================= 音频引擎（WebAudio 程序合成） ================= */
@@ -59,6 +82,7 @@ const AU={
     this.noise=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
     const d=this.noise.getChannelData(0);
     for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    applyAudio();                    // M5：按存档设置应用音量/静音
   },
   resume(){ if(this.ctx&&this.ctx.state==='suspended') this.ctx.resume().catch(()=>{}); },
   unlock(){ // 必须在用户手势内调用：创建/恢复 AudioContext + 播放静音脉冲"预热"
@@ -574,13 +598,16 @@ const FREE_POOL=['cup','cup','bottle','bottle','plate','plate','frame','mug','va
 const SAVE_KEY='zmt_save_v1';
 const padArr=(a,n)=>(a&&Array.isArray(a)?a.slice(0,n).concat(new Array(Math.max(0,n-a.length)).fill(0)):new Array(n).fill(0));
 const Save={
-  data:{score:0, stars:padArr(null,LEVELS.length), best:padArr(null,LEVELS.length), maxCombo:0, gifts:[]},
+  data:{score:0, stars:padArr(null,LEVELS.length), best:padArr(null,LEVELS.length), maxCombo:0, gifts:[],
+    vol:0.7, vib:true, sfx:true},    // M5：音量/震动/音效设置（旧存档取默认）
   load(){
     try{
       const s=JSON.parse(localStorage.getItem(SAVE_KEY));
       if(s){ this.data.score=s.score||0; this.data.stars=padArr(s.stars,LEVELS.length);
         this.data.best=padArr(s.best,LEVELS.length); this.data.maxCombo=s.maxCombo||0;
-        this.data.gifts=Array.isArray(s.gifts)?s.gifts:[]; }   // 旧存档无 gifts 字段 → 兼容
+        this.data.gifts=Array.isArray(s.gifts)?s.gifts:[];
+        this.data.vol=typeof s.vol==='number'?s.vol:0.7;      // 旧存档无设置字段 → 默认
+        this.data.vib=s.vib!==false; this.data.sfx=s.sfx!==false; }
     }catch(e){}
   },
   save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(this.data)); }catch(e){} },
@@ -821,7 +848,35 @@ const G={
   level:0, screen:'select', cards:[], backBtn:null, panelCount:0, banked:0, lastAdd:0,
   navBtns:[], giftCards:[], toast:'', toastT:0,      // M3：底部导航 / 礼品卡 / 兑换提示
   free:false, freeCard:null, freeSpawnT:0,           // M4：自由发泄屋模式
+  screenT:0, fade:0,                                  // M5：界面切换动画（入场时钟/淡入遮罩）
+  resetArm:false, resetT:0, sliderDrag:false,         // M5：设置界面状态
+  volBar:null, setSfxTgl:null, setVibTgl:null, resetBtn:null, confetti:[],
 };
+
+/* ================= M5 UI 改版：设置 / 动效 / 横屏 ================= */
+function setScreen(s){ G.screen=s; G.screenT=0; G.fade=0.24; }   // 切界面带淡入过渡
+function applyAudio(){ if(AU.master) AU.master.gain.value=Save.data.sfx===false?0:(typeof Save.data.vol==='number'?Save.data.vol:0.7); }
+function vib(p){ if(Save.data.vib&&navigator.vibrate) navigator.vibrate(p); }
+function isLandscape(){ return window.innerWidth>window.innerHeight; }
+function resetAllSave(){ localStorage.removeItem(SAVE_KEY); location.reload(); }
+function setVolFromX(x){ Save.data.vol=clamp((x-44)/392,0,1); Save.save(); applyAudio(); }
+function confettiBurst(){   // 三星全清彩带雨
+  const cols=['#ffd166','#ff7a59','#7ee081','#9fd8ef','#ff9fce'];
+  for(let i=0;i<46;i++) G.confetti.push({ x:rnd(60,W-60), y:rnd(-80,120), vx:rnd(-50,50), vy:rnd(80,200), ang:rnd(0,6), vang:rnd(-6,6), t:0, s:rnd(5,9), color:cols[(Math.random()*cols.length)|0] });
+}
+function updateConfetti(realDt){
+  for(const p of G.confetti){ p.t+=realDt; p.x+=p.vx*realDt; p.y+=p.vy*realDt; p.vy+=460*realDt; p.ang+=p.vang*realDt; }
+  G.confetti=G.confetti.filter(p=>p.t<1.9);
+}
+function drawConfetti(c){
+  for(const p of G.confetti){
+    c.save(); c.translate(p.x,p.y); c.rotate(p.ang);
+    c.globalAlpha=clamp(1-p.t/1.9,0,1);
+    c.fillStyle=p.color; c.fillRect(-p.s/2,-p.s/3,p.s,p.s*0.62);
+    c.restore();
+  }
+  c.globalAlpha=1;
+}
 
 /* ================= 画布 ================= */
 const cv=document.getElementById('cv');
@@ -846,11 +901,24 @@ function gestureVel(){
 function inRect(p,r){ return r&&p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h; }
 function panelHit(p){ return inRect(p,G.btn1)||inRect(p,G.btn2)||inRect(p,G.btn3); }
 cv.addEventListener('pointerdown',e=>{
+  if(isLandscape()) return;              // M5：横屏时忽略一切操作
   AU.unlock();
   const p=toCanvas(e);
+  if(G.screen==='settings'){             // M5 设置界面：返回/滑杆/开关/重置存档
+    if(inRect(p,G.backBtn)){ AU.ui(); showLevelSelect(); return; }
+    if(inRect(p,G.volBar)){ AU.ui(); G.sliderDrag=true; setVolFromX(p.x); return; }
+    if(inRect(p,G.setSfxTgl)){ AU.ui(); Save.data.sfx=!Save.data.sfx; Save.save(); applyAudio(); return; }
+    if(inRect(p,G.setVibTgl)){ AU.ui(); Save.data.vib=!Save.data.vib; Save.save(); vib(20); return; }
+    if(inRect(p,G.resetBtn)){
+      if(G.resetArm){ AU.ui(); resetAllSave(); }
+      else{ AU.ui(); G.resetArm=true; G.resetT=4; G.toast='⚠️ 再点一次「重置」确认清空存档'; G.toastT=2.6; }
+      return;
+    }
+    return;
+  }
   if(G.screen==='select'){               // 选关界面：底部导航 + 发泄屋 + 关卡卡片
     const n=G.navBtns.findIndex(r=>inRect(p,r));
-    if(n>=0){ AU.ui(); openScreen(['shop','hall','titles'][n]); return; }
+    if(n>=0){ AU.ui(); openScreen(['shop','hall','titles','settings'][n]); return; }
     if(inRect(p,G.freeCard)){ AU.ui(); if(freeUnlocked()) startFree(); return; }
     const i=G.cards.findIndex(r=>inRect(p,r));
     if(i>=0){ AU.ui(); if(Save.unlocked(i)) startLevel(i); }
@@ -894,6 +962,7 @@ cv.addEventListener('pointerdown',e=>{
   }
 });
 window.addEventListener('pointermove',e=>{
+  if(G.sliderDrag){ const p=toCanvas(e); setVolFromX(p.x); e.preventDefault(); return; }   // M5：音量滑杆拖动
   if(!input.active||e.pointerId!==input.id) return;
   e.preventDefault();
   const p=toCanvas(e);
@@ -915,8 +984,8 @@ function release(){
     it.vx=rnd(-45,45); it.vy=50; it.vang=rnd(-3,3);
   }
 }
-window.addEventListener('pointerup',e=>{ if(e.pointerId===input.id) release(); });
-window.addEventListener('pointercancel',e=>{ if(e.pointerId===input.id) release(); });
+window.addEventListener('pointerup',e=>{ if(G.sliderDrag){ G.sliderDrag=false; return; } if(e.pointerId===input.id) release(); });
+window.addEventListener('pointercancel',e=>{ if(G.sliderDrag){ G.sliderDrag=false; return; } if(e.pointerId===input.id) release(); });
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('touchmove',e=>{ if(input.active) e.preventDefault(); },{passive:false});
 // 移动端音频解锁兜底：部分安卓/iOS 浏览器只认 touchstart/touchend/click 手势
@@ -969,7 +1038,7 @@ function smash(it){
   const m=it.type.mass;
   G.freezeT=Math.max(G.freezeT, m>=4?0.12:(m>=1.2?0.07:0.04));   // 顿帧
   G.shakeAmp=Math.max(G.shakeAmp, Math.min(14,m*2));             // 震屏
-  if(navigator.vibrate) navigator.vibrate(Math.round(clamp(30+m*8,30,80)));
+  vib(Math.round(clamp(30+m*8,30,80)));
   // 连击
   G.combo++; G.comboT=COMBO_WINDOW; G.maxCombo=Math.max(G.maxCombo,G.combo);
   const mult=MULT[Math.min(G.combo,5)];
@@ -1066,7 +1135,7 @@ function step(dt, realDt){
   else if(G.timeScale<1) G.timeScale=Math.min(1,G.timeScale+realDt*2.2);
   if(G.state==='won'&&!G.panel&&!G.panelShown){
     const settled=G.items.every(it=>it.state!=='fly')&&G.items.every(it=>it.state!=='held');
-    if(settled){ G.panelDelay-=realDt; if(G.panelDelay<=0){ G.panel=true; G.panelShown=true; G.panelT=0; G.panelCount++; bankScore(); AU.fanfare(); } }
+    if(settled){ G.panelDelay-=realDt; if(G.panelDelay<=0){ G.panel=true; G.panelShown=true; G.panelT=0; G.panelCount++; bankScore(); AU.fanfare(); if(starsFor()>=3) confettiBurst(); } }   // M5：三星彩带
   }
   if(G.panel) G.panelT+=realDt;
   if(G.hintT>0) G.hintT-=realDt;
@@ -1178,6 +1247,7 @@ function step(dt, realDt){
   G.dust=G.dust.filter(p=>p.t<1);
   for(const f of G.floaters){ f.t+=realDt; f.y-=55*realDt; f.a=1-f.t; }
   G.floaters=G.floaters.filter(f=>f.t<1);
+  updateConfetti(realDt);              // M5：三星彩带下落
 }
 
 /* ================= 渲染 ================= */
@@ -1343,32 +1413,36 @@ function drawTrajectory(c){
   }
   c.restore();
 }
-function drawHUD(c,t){
-  const g=c.createLinearGradient(0,0,0,120);
-  g.addColorStop(0,'rgba(20,20,30,0.45)'); g.addColorStop(1,'rgba(20,20,30,0)');
-  c.fillStyle=g; c.fillRect(0,0,W,120);
+function drawHUD(c,t){   // M5：HUD（金圈返回 / 珊瑚连击横幅 / 金色通关线）
+  const g=c.createLinearGradient(0,0,0,110);
+  g.addColorStop(0,'rgba(20,16,34,0.6)'); g.addColorStop(1,'rgba(20,16,34,0)');
+  c.fillStyle=g; c.fillRect(0,0,W,110);
   // 返回选关按钮
   G.backBtn={x:14,y:14,w:34,h:34};
-  c.fillStyle='rgba(255,255,255,0.16)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
-  c.strokeStyle='rgba(255,255,255,0.45)'; c.lineWidth=2; c.stroke();
-  c.fillStyle='#fff'; c.font='800 22px "PingFang SC",sans-serif';
-  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,27);
+  c.fillStyle='rgba(255,255,255,0.1)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
+  c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
+  c.fillStyle=UI.gold; c.font='800 22px "PingFang SC",sans-serif';
+  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,26);
   c.textAlign='left'; c.textBaseline='top';
-  c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 15px "PingFang SC",sans-serif';
-  c.fillText(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name,56,12);
+  c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 14px "PingFang SC",sans-serif';
+  c.fillText(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name,56,11);
   G.scoreShow+=(G.score-G.scoreShow)*Math.min(1,G.lastRealDt*10);
-  c.font='800 30px "PingFang SC",sans-serif'; c.fillStyle='#fff';
-  c.fillText(Math.round(G.scoreShow)+'',56,34);
+  c.font='800 28px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText(Math.round(G.scoreShow)+'',56,32);
   c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
-  c.fillText('积分',60,68);
-  // 连击
+  c.fillText('积分',60,64);
+  // 连击（珊瑚渐变横幅）
   if(G.combo>1&&G.comboT>0){
     const pulse=1+Math.sin(t*12)*0.06;
-    c.save(); c.translate(W/2,46); c.scale(pulse,pulse);
-    c.textAlign='center'; c.font='800 26px "PingFang SC",sans-serif';
-    c.fillStyle='#ffd166'; c.fillText('连击 ×'+G.combo,0,0);
-    c.font='700 13px "PingFang SC",sans-serif';
-    c.fillText(MULT[Math.min(G.combo,5)]+'x 倍率',0,30);
+    c.save(); c.translate(W/2,48); c.scale(pulse,pulse);
+    const w2=132, h2=44;
+    const gg=c.createLinearGradient(0,-h2/2,0,h2/2);
+    gg.addColorStop(0,'rgba(255,179,92,0.95)'); gg.addColorStop(1,'rgba(255,122,89,0.95)');
+    c.fillStyle=gg; c.beginPath(); roundRect(c,-w2/2,-h2/2,w2,h2,22); c.fill();
+    c.textAlign='center'; c.textBaseline='middle'; c.font='800 24px "PingFang SC",sans-serif';
+    c.fillStyle='#fff'; c.fillText('连击 ×'+G.combo,0,-2);
+    c.font='700 12px "PingFang SC",sans-serif';
+    c.fillText(MULT[Math.min(G.combo,5)]+'x 倍率',0,16);
     c.restore();
   }
   // 进度（发泄屋无通关目标：只显示累计砸碎数）
@@ -1381,9 +1455,9 @@ function drawHUD(c,t){
   }else{
     c.fillStyle='rgba(0,0,0,0.35)'; c.beginPath(); roundRect(c,bx,by,bw,bh,6); c.fill();
     const pct=G.smashed/G.total;
-    c.fillStyle='#7ee081'; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
+    c.fillStyle=UI.green; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
     const mx=bx+bw*PASS_RATE;
-    c.strokeStyle='#fff'; c.lineWidth=2;
+    c.strokeStyle=UI.gold; c.lineWidth=2;
     c.beginPath(); c.moveTo(mx,by-2); c.lineTo(mx,by+bh+2); c.stroke();
     c.textAlign='right'; c.font='700 12px "PingFang SC",sans-serif'; c.fillStyle='#fff';
     c.fillText(G.smashed+'/'+G.total, bx+bw, by+bh+14);
@@ -1413,21 +1487,28 @@ function drawHint(c){
   c.fillText(G.free?'物品会不断从天上掉下来 · 砸碎直接入账！':'砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
   c.restore();
 }
-function drawBtn(c,r,txt,primary){
-  c.fillStyle=primary?'#ffd166':'rgba(255,255,255,0.15)';
-  c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,26); c.fill();
-  c.fillStyle=primary?'#23232f':'#fff';
-  c.font='800 18px "PingFang SC",sans-serif';
+function drawBtn(c,r,txt,primary){   // M5：胶囊按钮（主按钮珊瑚渐变）
+  if(primary){
+    const g=c.createLinearGradient(0,r.y,0,r.y+r.h);
+    g.addColorStop(0,'#ffb35c'); g.addColorStop(1,UI.coral);
+    c.fillStyle=g;
+  }else c.fillStyle='rgba(255,255,255,0.12)';
+  c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,r.h/2); c.fill();
+  c.strokeStyle=primary?'rgba(255,255,255,0.4)':'rgba(255,255,255,0.18)'; c.lineWidth=1.5; c.stroke();
+  c.fillStyle=primary?'#2a1308':'#fff';
+  c.font='800 17px "PingFang SC",sans-serif';
   c.textAlign='center'; c.textBaseline='middle';
   c.fillText(txt, r.x+r.w/2, r.y+r.h/2+1);
 }
-function drawPanel(c){
-  c.fillStyle='rgba(15,15,25,0.72)'; c.fillRect(0,0,W,H);
+function drawPanel(c){   // M5：结算面板（金边卡 + 珊瑚主按钮 + 三星彩带）
+  c.fillStyle='rgba(10,8,20,0.74)'; c.fillRect(0,0,W,H);
   const cx=W/2, cy=H/2-30, pw=360, ph=400;
-  c.fillStyle='#23232f'; c.beginPath(); roundRect(c,cx-pw/2,cy-ph/2,pw,ph,20); c.fill();
-  c.strokeStyle='rgba(255,255,255,0.15)'; c.lineWidth=2; c.stroke();
+  const g=c.createLinearGradient(0,cy-ph/2,0,cy+ph/2);
+  g.addColorStop(0,'#322a4d'); g.addColorStop(1,'#241e3a');
+  c.fillStyle=g; c.beginPath(); roundRect(c,cx-pw/2,cy-ph/2,pw,ph,20); c.fill();
+  c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=2; c.stroke();
   c.textAlign='center'; c.textBaseline='middle';
-  c.fillStyle='#ffd166'; c.font='800 28px "PingFang SC",sans-serif';
+  c.fillStyle=UI.gold; c.font='800 28px "PingFang SC",sans-serif';
   c.fillText('清场成功！', cx, cy-ph/2+36);
   const stars=starsFor();
   for(let i=0;i<3;i++){
@@ -1439,7 +1520,7 @@ function drawPanel(c){
     }
     c.save(); c.translate(sx,sy); c.scale(pop,pop);
     c.font='48px sans-serif';
-    c.fillStyle=got?'#ffd166':'rgba(255,255,255,0.15)';
+    c.fillStyle=got?UI.gold:'rgba(255,255,255,0.15)';
     c.fillText('★',0,0);
     c.restore();
   }
@@ -1447,7 +1528,7 @@ function drawPanel(c){
   c.fillStyle='#fff'; c.font='700 20px "PingFang SC",sans-serif';
   c.fillText('本关积分  '+G.score, cx, cy-ph/2+152);
   if(bonus){
-    c.fillStyle='#7ee081'; c.font='700 16px "PingFang SC",sans-serif';
+    c.fillStyle=UI.green; c.font='700 16px "PingFang SC",sans-serif';
     c.fillText('完美全清 +'+bonus+' → 共 '+(G.score+bonus), cx, cy-ph/2+180);
   }
   c.fillStyle='rgba(255,255,255,0.7)'; c.font='600 14px "PingFang SC",sans-serif';
@@ -1472,52 +1553,69 @@ function drawPanel(c){
     drawBtn(c,G.btn1,'再砸一次',true);
     drawBtn(c,G.btn3,'选关',false);
   }
+  drawConfetti(c);   // M5：三星彩带（非三星时为空数组）
 }
 function render(t){
   const c=ctx;
   c.clearRect(0,0,W,H);
-  if(G.screen==='select'){ drawSelect(c,t); return; }
-  if(G.screen==='shop'){ drawShop(c,t); return; }
-  if(G.screen==='hall'){ drawHall(c,t); return; }
-  if(G.screen==='titles'){ drawTitles(c,t); return; }
-  c.save();
-  if(G.shakeAmp>0.2){                       // 震屏（实时衰减）
-    G.shakeAmp*=Math.exp(-6*G.lastRealDt);
-    c.translate(rnd(-G.shakeAmp,G.shakeAmp),rnd(-G.shakeAmp,G.shakeAmp));
-  }else G.shakeAmp=0;
-  drawRoom(c);
-  drawShadows(c);
-  for(const it of G.items){
-    if(it.state==='gone'||it.state==='held') continue;
-    drawItem(c,it);
+  if(G.screen==='select') drawSelect(c,t);
+  else if(G.screen==='shop') drawShop(c,t);
+  else if(G.screen==='hall') drawHall(c,t);
+  else if(G.screen==='titles') drawTitles(c,t);
+  else if(G.screen==='settings') drawSettings(c,t);
+  else{
+    c.save();
+    if(G.shakeAmp>0.2){                       // 震屏（实时衰减）
+      G.shakeAmp*=Math.exp(-6*G.lastRealDt);
+      c.translate(rnd(-G.shakeAmp,G.shakeAmp),rnd(-G.shakeAmp,G.shakeAmp));
+    }else G.shakeAmp=0;
+    drawRoom(c);
+    drawShadows(c);
+    for(const it of G.items){
+      if(it.state==='gone'||it.state==='held') continue;
+      drawItem(c,it);
+    }
+    drawFragments(c);
+    drawDust(c);
+    if(input.held) drawItem(c,input.held,1.12,true);
+    drawTrajectory(c);
+    drawFloaters(c);
+    c.restore();
+    drawHUD(c,t);
+    drawVignette(c);
+    if(G.hintT>0&&!G.panel) drawHint(c);
+    if(G.panel) drawPanel(c);
   }
-  drawFragments(c);
-  drawDust(c);
-  if(input.held) drawItem(c,input.held,1.12,true);
-  drawTrajectory(c);
-  drawFloaters(c);
-  c.restore();
-  drawHUD(c,t);
-  drawVignette(c);
-  if(G.hintT>0&&!G.panel) drawHint(c);
-  if(G.panel) drawPanel(c);
+  if(G.fade>0){                              // M5：界面切换淡入遮罩
+    c.fillStyle='rgba(10,8,20,'+Math.min(1,G.fade/0.24)*0.92+')';
+    c.fillRect(0,0,W,H);
+  }
+  if(isLandscape()) drawRotate(c,t);         // M5：横屏提示
 }
-function drawBG(c){   // 菜单系界面共用深色渐变背景
+function drawBG(c){   // M5：深紫夜幕 + 顶部暖光 + 底部暗角
   const g=c.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#26263a'); g.addColorStop(0.55,'#1d1d2e'); g.addColorStop(1,'#14141f');
+  g.addColorStop(0,UI.bg0); g.addColorStop(0.55,'#211b36'); g.addColorStop(1,UI.bg1);
   c.fillStyle=g; c.fillRect(0,0,W,H);
+  const rg=c.createRadialGradient(W/2,-80,20,W/2,-80,360);
+  rg.addColorStop(0,'rgba(255,122,89,0.12)'); rg.addColorStop(1,'rgba(255,122,89,0)');
+  c.fillStyle=rg; c.fillRect(0,0,W,360);
+  const vg=c.createLinearGradient(0,H-180,0,H);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.4)');
+  c.fillStyle=vg; c.fillRect(0,H-180,W,180);
 }
-function drawHeader(c,icon,title,sub){   // 菜单系界面共用顶栏（返回按钮+标题）
+function drawHeader(c,icon,title,sub){   // M5：菜单系顶栏（金圈返回 + 标题 + 分隔线）
   G.backBtn={x:14,y:14,w:34,h:34};
-  c.fillStyle='rgba(255,255,255,0.16)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
-  c.strokeStyle='rgba(255,255,255,0.45)'; c.lineWidth=2; c.stroke();
-  c.fillStyle='#fff'; c.font='800 22px "PingFang SC",sans-serif';
-  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,27);
+  c.fillStyle='rgba(255,255,255,0.1)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
+  c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
+  c.fillStyle=UI.gold; c.font='800 22px "PingFang SC",sans-serif';
+  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,26);
   c.textAlign='left'; c.textBaseline='top';
-  c.fillStyle='#fff'; c.font='800 22px "PingFang SC",sans-serif';
+  c.fillStyle='#fff'; c.font='800 21px "PingFang SC",sans-serif';
   c.fillText(icon+' '+title, 58, 14);
   c.fillStyle='rgba(255,255,255,0.55)'; c.font='600 12px "PingFang SC",sans-serif';
-  c.fillText(sub, 60, 46);
+  c.fillText(sub, 60, 45);
+  c.strokeStyle='rgba(255,209,102,0.25)'; c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(22,76); c.lineTo(W-22,76); c.stroke();
 }
 function drawToast(c){   // 兑换成功提示条（淡入淡出）
   if(G.toastT<=0||!G.toast) return;
@@ -1525,148 +1623,156 @@ function drawToast(c){   // 兑换成功提示条（淡入淡出）
   c.save(); c.globalAlpha=clamp(fade,0,1);
   c.font='700 15px "PingFang SC",sans-serif';
   const w=c.measureText(G.toast).width+40;
-  c.fillStyle='rgba(20,20,32,0.92)';
+  c.fillStyle='rgba(26,20,44,0.95)';
   c.beginPath(); roundRect(c,(W-w)/2,116,w,44,22); c.fill();
   c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=1.5; c.stroke();
-  c.fillStyle='#ffd166'; c.textAlign='center'; c.textBaseline='middle';
+  c.fillStyle=UI.gold; c.textAlign='center'; c.textBaseline='middle';
   c.fillText(G.toast, W/2, 139);
   c.restore();
 }
-function drawSelect(c,t){
+function drawSelect(c,t){   // M5：选关界面（英雄区 + 6 卡错落入场 + 发泄屋横幅 + 4 导航）
   drawBG(c);
   c.textAlign='center'; c.textBaseline='middle';
-  // 标题
-  c.font='800 40px "PingFang SC",sans-serif'; c.fillStyle='#fff';
-  c.fillText('🔨 砸个痛快', W/2, 62);
-  c.font='600 13px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.55)';
-  c.fillText('万物皆可砸 · 砸得越响分越高', W/2, 96);
-  // 总积分 + 称号徽章
-  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
-  c.fillText('总积分  '+Save.data.score, W/2, 128);
+  c.font='900 36px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('🔨 砸个痛快', W/2, 44);
+  c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+  c.fillText('万物皆可砸 · 砸得越响分越高', W/2, 78);
+  // 总积分卡 + 称号徽章
+  uiCard(c,{x:20,y:92,w:440,h:56,fill:'rgba(255,209,102,0.10)',fill2:'rgba(255,209,102,0.04)',line:'rgba(255,209,102,0.35)',r:16});
+  c.textAlign='left'; c.textBaseline='top';
+  c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+  c.fillText('总积分', 38, 102);
+  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
+  c.fillText(''+Save.data.score, 38, 116);
   const ti=titleInfo(Save.data.score);
-  const bw=168, bh=30;
-  c.fillStyle='rgba(255,209,102,0.15)';
-  c.beginPath(); roundRect(c,W/2-bw/2,142,bw,bh,15); c.fill();
-  c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
-  c.font='700 14px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
-  c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2, 158);
+  c.textAlign='center'; c.textBaseline='middle';
+  c.font='700 13px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
+  c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2+110, 120);
   // 下一称号进度
   if(ti.next){
     const pct=clamp((Save.data.score-ti.cur)/(ti.next[0]-ti.cur),0,1);
-    const pw=260;
-    c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,W/2-pw/2,180,pw,8,4); c.fill();
-    c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,W/2-pw/2,180,Math.max(8,pw*pct),8,4); c.fill();
-    c.textAlign='left'; c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.5)';
-    c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2-pw/2, 192);
+    const pw=300;
+    c.textAlign='left'; c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+    c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', 90, 158);
+    c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,90,170,pw,8,4); c.fill();
+    c.fillStyle=UI.gold; c.beginPath(); roundRect(c,90,170,Math.max(8,pw*pct),8,4); c.fill();
     c.textAlign='center';
   }
-  // 关卡卡片（2 列 × 3 行）
+  // 关卡卡片（2 列 × 3 行，错落入场）
   G.cards=[];
-  const cw=214, ch=126, gap=10, x0=(W-2*cw-gap)/2, y0=204;
+  const cw=214, ch=128, gap=10, x0=(W-2*cw-gap)/2, y0=186;
   for(let i=0;i<LEVELS.length;i++){
     const col=i%2, row=(i/2)|0;
     const r={x:x0+col*(cw+gap), y:y0+row*(ch+gap), w:cw, h:ch};
     G.cards.push(r);
-    const L=LEVELS[i], un=Save.unlocked(i);
-    c.fillStyle=un?'#2b2b3d':'#232330';
-    c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,16); c.fill();
-    c.strokeStyle='rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
-    // 迷你房间预览（用关卡主题色绘制）
-    const px=r.x+8, py=r.y+8, pw2=cw-16, ph2=46;
-    c.save(); c.beginPath(); roundRect(c,px,py,pw2,ph2,9); c.clip();
-    const rg=c.createLinearGradient(0,py,0,py+ph2*0.72);
+    const L=LEVELS[i], un=Save.unlocked(i), three=Save.data.stars[i]>=3;
+    const k=clamp((G.screenT-i*0.05)/0.3,0,1);
+    c.save();
+    c.globalAlpha=0.25+0.75*k; c.translate(0,(1-k)*16);
+    uiCard(c,r,{fill:un?undefined:'#272138',fill2:un?undefined:'#1f1a30',line:three?'rgba(255,209,102,0.7)':UI.line,gold:three});
+    // 迷你房间预览
+    const px=r.x+8, py=r.y+8, pw2=cw-16, ph2=54;
+    c.save(); c.beginPath(); roundRect(c,px,py,pw2,ph2,10); c.clip();
+    const rg=c.createLinearGradient(0,py,0,py+ph2*0.7);
     rg.addColorStop(0,L.theme.wallTop); rg.addColorStop(1,L.theme.wallBot);
     c.fillStyle=rg; c.fillRect(px,py,pw2,ph2);
-    c.fillStyle=L.theme.wood; c.fillRect(px+6,py+5,14,20);
-    c.fillStyle='#bde3f7'; c.fillRect(px+9,py+7,9,16);
-    c.fillRect(px+13,py+7,2,16);
-    c.fillStyle=L.theme.floor; c.fillRect(px,py+ph2*0.72,pw2,ph2*0.28);
-    c.fillStyle=L.theme.base; c.fillRect(px,py+ph2*0.72,pw2,3);
-    if(!un){ c.fillStyle='rgba(10,10,20,0.45)'; c.fillRect(px,py,pw2,ph2); }   // 锁定暗化
+    c.fillStyle=L.theme.wood; c.fillRect(px+6,py+6,16,22);
+    c.fillStyle='#bde3f7'; c.fillRect(px+10,py+9,9,16); c.fillRect(px+14,py+9,2,16);
+    c.fillStyle=L.theme.floor; c.fillRect(px,py+ph2*0.7,pw2,ph2*0.3);
+    c.fillStyle=L.theme.base; c.fillRect(px,py+ph2*0.7,pw2,3);
     c.restore();
     c.strokeStyle='rgba(255,255,255,0.2)'; c.lineWidth=2;
-    c.beginPath(); roundRect(c,px,py,pw2,ph2,9); c.stroke();
+    c.beginPath(); roundRect(c,px,py,pw2,ph2,10); c.stroke();
+    if(!un){                               // 锁定遮罩 + 大锁
+      c.fillStyle='rgba(10,8,20,0.5)'; c.beginPath(); roundRect(c,px,py,pw2,ph2,10); c.fill();
+      c.font='22px sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillText('🔒', px+pw2/2, py+ph2/2+2);
+    }
     // 关数圆标
-    c.fillStyle=un?'#ffd166':'#4a4a58';
+    c.fillStyle=un?UI.gold:'#3f3a55';
     c.beginPath(); c.arc(r.x+24,r.y+24,12,0,Math.PI*2); c.fill();
-    c.fillStyle='#23232f'; c.font='800 14px "PingFang SC",sans-serif';
+    c.fillStyle='#231d33'; c.font='800 14px "PingFang SC",sans-serif';
     c.textAlign='center'; c.textBaseline='middle';
     c.fillText(''+(i+1), r.x+24, r.y+25);
     // 文字
     c.textAlign='left'; c.textBaseline='top';
-    c.fillStyle=un?'#fff':'rgba(255,255,255,0.4)';
+    c.fillStyle=un?'#fff':UI.dim;
     c.font='800 15px "PingFang SC",sans-serif';
-    c.fillText('第 '+(i+1)+' 关 · '+L.name, r.x+12, r.y+62);
+    c.fillText('第 '+(i+1)+' 关 · '+L.name, r.x+12, r.y+70);
     if(un){
       for(let s=0;s<3;s++){                 // 星级
         c.font='17px sans-serif';
-        c.fillStyle=s<Save.data.stars[i]?'#ffd166':'rgba(255,255,255,0.16)';
-        c.fillText('★', r.x+12+s*21, r.y+86);
+        c.fillStyle=s<Save.data.stars[i]?UI.gold:'rgba(255,255,255,0.16)';
+        c.fillText('★', r.x+12+s*21, r.y+94);
       }
-      c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.5)';
-      c.fillText(Save.data.best[i]?('最佳 '+Save.data.best[i]+' 分'):'尚未通关', r.x+12, r.y+104);
-      c.fillStyle='#ffd166';                // 开始按钮
-      c.beginPath(); c.arc(r.x+cw-24, r.y+ch-24, 16, 0, Math.PI*2); c.fill();
-      c.fillStyle='#23232f';
-      c.beginPath(); c.moveTo(r.x+cw-29, r.y+ch-31); c.lineTo(r.x+cw-29, r.y+ch-17); c.lineTo(r.x+cw-16, r.y+ch-24); c.closePath(); c.fill();
-    }else{                                  // 锁
-      c.textAlign='center'; c.font='18px sans-serif';
-      c.fillText('🔒', r.x+cw/2, r.y+82);
-      c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.45)';
-      c.fillText('通关上一关解锁', r.x+cw/2, r.y+102);
+      c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+      c.fillText(Save.data.best[i]?('最佳 '+Save.data.best[i]+' 分'):'尚未通关', r.x+12, r.y+114);
+      const bx=r.x+cw-26, by=r.y+ch-26;    // 开始圆钮（珊瑚）
+      c.fillStyle=UI.coral;
+      c.beginPath(); c.arc(bx,by,15,0,Math.PI*2); c.fill();
+      c.fillStyle='#fff';
+      c.beginPath(); c.moveTo(bx-5,by-7); c.lineTo(bx-5,by+7); c.lineTo(bx+7,by); c.closePath(); c.fill();
+    }else{
+      c.textAlign='center'; c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
+      c.fillText('通关上一关解锁', r.x+cw/2, r.y+112);
     }
+    c.restore();
   }
   // 自由发泄屋入口（通关第 3 关解锁）
   const fUn=freeUnlocked();
-  G.freeCard={x:20, y:y0+3*(ch+gap)+8, w:W-40, h:56};
-  c.fillStyle=fUn?'#3a2f2b':'#232330';
-  c.beginPath(); roundRect(c,G.freeCard.x,G.freeCard.y,G.freeCard.w,G.freeCard.h,16); c.fill();
-  c.strokeStyle=fUn?'rgba(255,140,80,0.55)':'rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
+  G.freeCard={x:20, y:y0+3*(ch+gap)+6, w:W-40, h:54};
+  const fk=clamp((G.screenT-LEVELS.length*0.05)/0.3,0,1);
+  c.save(); c.globalAlpha=0.25+0.75*fk; c.translate(0,(1-fk)*14);
+  uiCard(c,G.freeCard,{fill:fUn?'rgba(255,122,89,0.22)':'#272138',fill2:fUn?'rgba(255,122,89,0.10)':'#1f1a30',line:fUn?'rgba(255,122,89,0.6)':UI.line,r:16});
   c.textAlign='left'; c.textBaseline='top';
-  c.fillStyle=fUn?'#ffb080':'rgba(255,255,255,0.45)';
-  c.font='800 17px "PingFang SC",sans-serif';
-  c.fillText('💥 自由发泄屋', G.freeCard.x+14, G.freeCard.y+9);
+  c.fillStyle=fUn?UI.coral:UI.dim;
+  c.font='800 16px "PingFang SC",sans-serif';
+  c.fillText('💥 自由发泄屋', G.freeCard.x+14, G.freeCard.y+8);
   c.font='600 11px "PingFang SC",sans-serif';
-  c.fillStyle=fUn?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
-  c.fillText('无尽物品 · 无目标 · 纯刷分', G.freeCard.x+14, G.freeCard.y+33);
+  c.fillStyle=fUn?UI.sub:UI.dim;
+  c.fillText('无尽物品 · 无目标 · 纯刷分', G.freeCard.x+14, G.freeCard.y+31);
   if(fUn){
-    c.fillStyle='#ffd166';
-    c.beginPath(); c.arc(G.freeCard.x+G.freeCard.w-30, G.freeCard.y+G.freeCard.h/2, 16, 0, Math.PI*2); c.fill();
-    c.fillStyle='#23232f';
-    c.beginPath(); c.moveTo(G.freeCard.x+G.freeCard.w-35, G.freeCard.y+G.freeCard.h/2-10); c.lineTo(G.freeCard.x+G.freeCard.w-35, G.freeCard.y+G.freeCard.h/2+10); c.lineTo(G.freeCard.x+G.freeCard.w-22, G.freeCard.y+G.freeCard.h/2); c.closePath(); c.fill();
+    const bx=G.freeCard.x+G.freeCard.w-30, by=G.freeCard.y+G.freeCard.h/2;
+    c.fillStyle=UI.coral;
+    c.beginPath(); c.arc(bx,by,15,0,Math.PI*2); c.fill();
+    c.fillStyle='#fff';
+    c.beginPath(); c.moveTo(bx-5,by-7); c.lineTo(bx-5,by+7); c.lineTo(bx+7,by); c.closePath(); c.fill();
   }else{
     c.textAlign='right'; c.textBaseline='middle';
-    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.45)';
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
     c.fillText('🔒 通关第 3 关解锁', G.freeCard.x+G.freeCard.w-14, G.freeCard.y+G.freeCard.h/2+1);
   }
-  // 底部导航：礼品馆 / 荣誉室 / 称号
+  c.restore();
+  // 底部导航：礼品馆 / 荣誉室 / 称号 / 设置（M5 新增）
   G.navBtns=[];
-  const nw=140, ngap=10, nx0=(W-3*nw-2*ngap)/2, ny=696, nh=52;
-  [['🎁','礼品馆'],['🏆','荣誉室'],['🏅','称号']].forEach((b,i)=>{
+  const nw=102, ngap=10, nx0=(W-4*nw-3*ngap)/2, ny=668, nh=52;
+  [['🎁','礼品馆'],['🏆','荣誉室'],['🏅','称号'],['⚙️','设置']].forEach((b,i)=>{
     const r={x:nx0+i*(nw+ngap),y:ny,w:nw,h:nh};
     G.navBtns.push(r);
-    c.fillStyle='#2b2b3d'; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,26); c.fill();
-    c.strokeStyle='rgba(255,209,102,0.4)'; c.lineWidth=2; c.stroke();
-    c.textAlign='center'; c.font='700 16px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+    const k=clamp((G.screenT-LEVELS.length*0.05-0.05)/0.3,0,1);
+    c.save(); c.globalAlpha=0.25+0.75*k; c.translate(0,(1-k)*10);
+    uiCard(c,r,{line:'rgba(255,209,102,0.4)',r:26});
+    c.textAlign='center'; c.textBaseline='middle'; c.font='700 14px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
     c.fillText(b[0]+' '+b[1], r.x+r.w/2, r.y+r.h/2+1);
+    c.restore();
   });
   c.textAlign='center';
-  c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.4)';
+  c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
   c.fillText('通关即可解锁下一关 · 存档自动保存在本机', W/2, H-16);
 }
-function drawShop(c,t){   // 礼品馆：12 件礼品积分门槛兑换
+function drawShop(c,t){   // M5：礼品馆（12 件礼品，错落入场 + 珊瑚领取按钮）
   drawBG(c);
   drawHeader(c,'🎁','礼品馆','累计积分达到门槛即可领取 · 不扣积分');
   G.giftCards=[];
   const cw=214, ch=118, gap=10, x0=(W-2*cw-gap)/2, y0=82;
   for(let i=0;i<GIFTS.length;i++){
     const g=GIFTS[i], col=i%2, row=(i/2)|0;
-    const r={x:x0+col*(cw+gap), y:y0+row*(ch+10), w:cw, h:ch};
+    const r={x:x0+col*(cw+gap), y:y0+row*(ch+gap), w:cw, h:ch};
     G.giftCards.push(r);
     const owned=Save.hasGift(g.id), afford=Save.data.score>=g.price;
-    c.fillStyle=owned?'rgba(126,224,129,0.13)':'#2b2b3d';
-    c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,14); c.fill();
-    c.strokeStyle=owned?'rgba(126,224,129,0.55)':'rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
+    const k=clamp((G.screenT-(col*0.04+row*0.06))/0.25,0,1);
+    c.save(); c.globalAlpha=0.3+0.7*k; c.translate(0,(1-k)*12);
+    uiCard(c,r,{fill:owned?'rgba(126,224,129,0.10)':undefined,line:owned?'rgba(126,224,129,0.55)':UI.line,r:14});
     // 礼品图（左上区域，未达标变暗）
     c.save(); c.translate(r.x+46, r.y+52);
     if(!owned&&!afford) c.globalAlpha=0.32;
@@ -1675,44 +1781,54 @@ function drawShop(c,t){   // 礼品馆：12 件礼品积分门槛兑换
     // 名称 / 门槛 / 称号 / 描述
     c.textAlign='left'; c.textBaseline='top';
     c.font='800 15px "PingFang SC",sans-serif';
-    c.fillStyle=owned?'#7ee081':(afford?'#fff':'rgba(255,255,255,0.55)');
+    c.fillStyle=owned?UI.green:(afford?'#fff':'rgba(255,255,255,0.55)');
     c.fillText(g.name, r.x+92, r.y+11);
-    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
     c.fillText('积分门槛 '+g.price, r.x+92, r.y+32);
-    c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
+    c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
     c.fillText('称号「'+g.title+'」', r.x+92, r.y+50);
-    c.fillStyle='rgba(255,255,255,0.35)';
+    c.fillStyle=UI.dim;
     c.fillText(g.desc, r.x+92, r.y+66);
     // 状态 / 领取按钮
     c.textBaseline='middle';
     if(owned){
-      c.fillStyle='#7ee081'; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='right';
+      c.fillStyle=UI.green; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='right';
       c.fillText('✓ 已领取', r.x+cw-12, r.y+ch-21);
     }else if(afford){
       const bx=r.x+cw-66, by=r.y+ch-38, bw2=54, bh2=26;
-      c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,bx,by,bw2,bh2,13); c.fill();
-      c.fillStyle='#23232f'; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='center';
+      const gg=c.createLinearGradient(0,by,0,by+bh2);
+      gg.addColorStop(0,'#ffb35c'); gg.addColorStop(1,UI.coral);
+      c.fillStyle=gg; c.beginPath(); roundRect(c,bx,by,bw2,bh2,13); c.fill();
+      c.fillStyle='#2a1308'; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='center';
       c.fillText('领取', bx+bw2/2, by+bh2/2+1);
     }else{
-      c.textAlign='right'; c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.4)';
+      c.textAlign='right'; c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
       c.fillText('还差 '+(g.price-Save.data.score)+' 分', r.x+cw-12, r.y+ch-21);
     }
+    c.restore();
   }
   drawToast(c);
 }
-function drawHall(c,t){   // 荣誉室：已兑换礼品陈列 + 各关最佳 + 称号徽章墙
+function drawHall(c,t){   // M5：荣誉室（金色光晕展台 + 主题色成绩榜 + 称号徽章墙）
   drawBG(c);
   drawHeader(c,'🏆','荣誉室','已兑换礼品陈列 · 各关最佳成绩 · 称号徽章');
   // 陈列台：4 列 × 3 行（12 个展位）
   const cols=4, cw=106, ch=112, gap=10, x0=(W-cols*cw-(cols-1)*gap)/2, y0=78;
   for(let i=0;i<12;i++){
     const col=i%4, row=(i/4)|0, cx=x0+col*(cw+gap)+cw/2, by=y0+row*(ch+12);
-    c.fillStyle='#3a3a4c';                                          // 底座
+    const owned=Save.hasGift(GIFTS[i].id);
+    if(owned){                                                       // 已兑换展位金色光晕
+      const rg=c.createRadialGradient(cx,by+44,6,cx,by+44,40);
+      rg.addColorStop(0,'rgba(255,209,102,0.28)'); rg.addColorStop(1,'rgba(255,209,102,0)');
+      c.fillStyle=rg; c.fillRect(cx-40,by,80,84);
+    }
+    c.fillStyle=owned?'#3d3458':'#2a2340';                           // 底座
     c.beginPath(); roundRect(c,x0+col*(cw+gap),by+74,cw,30,8); c.fill();
-    c.fillStyle='#2b2b3d'; c.fillRect(cx-3,by+62,6,14);             // 底座颈
-    if(Save.hasGift(GIFTS[i].id)){
+    c.strokeStyle=owned?'rgba(255,209,102,0.4)':UI.line; c.lineWidth=1.5; c.stroke();
+    c.fillStyle=owned?'#3d3458':'#2a2340'; c.fillRect(cx-3,by+62,6,14);   // 底座颈
+    if(owned){
       c.save(); c.translate(cx,by+44); c.scale(0.72,0.72); GIFTS[i].draw(c); c.restore();
-      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
+      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
       c.fillText(GIFTS[i].name, cx, by+98);
     }else{                                                          // 空展位：虚线问号
       c.save(); c.translate(cx,by+40);
@@ -1721,7 +1837,7 @@ function drawHall(c,t){   // 荣誉室：已兑换礼品陈列 + 各关最佳 + 
       c.fillStyle='rgba(255,255,255,0.3)'; c.font='800 20px "PingFang SC",sans-serif';
       c.textAlign='center'; c.textBaseline='middle'; c.fillText('?',0,1);
       c.restore();
-      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+      c.textAlign='center'; c.textBaseline='top'; c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
       c.fillText(GIFTS[i].price+' 分', cx, by+98);
     }
   }
@@ -1732,14 +1848,17 @@ function drawHall(c,t){   // 荣誉室：已兑换礼品陈列 + 各关最佳 + 
   c.fillText('各关最佳成绩', 22, y2);
   for(let i=0;i<LEVELS.length;i++){
     const y=y2+32+i*36;
-    c.fillStyle='rgba(255,255,255,0.06)';
+    c.fillStyle='rgba(255,255,255,0.05)';
     c.beginPath(); roundRect(c,22,y-22,436,30,8); c.fill();
+    c.strokeStyle='rgba(255,255,255,0.07)'; c.lineWidth=1; c.stroke();
+    c.fillStyle=LEVELS[i].theme.rug||LEVELS[i].theme.wood;          // 主题色圆点
+    c.beginPath(); c.arc(32,y,4.5,0,Math.PI*2); c.fill();
     c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 13px "PingFang SC",sans-serif'; c.textBaseline='middle';
-    c.fillText('第 '+(i+1)+' 关 · '+LEVELS[i].name, 34, y);
-    for(let s=0;s<3;s++){ c.font='15px sans-serif'; c.fillStyle=s<Save.data.stars[i]?'#ffd166':'rgba(255,255,255,0.15)'; c.fillText('★', 176+s*20, y); }
+    c.fillText('第 '+(i+1)+' 关 · '+LEVELS[i].name, 44, y);
+    for(let s=0;s<3;s++){ c.font='15px sans-serif'; c.fillStyle=s<Save.data.stars[i]?UI.gold:'rgba(255,255,255,0.15)'; c.fillText('★', 176+s*20, y); }
     c.textAlign='right';
-    if(Save.data.best[i]){ c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.fillText('最佳 '+Save.data.best[i]+' 分', 446, y); }
-    else { c.fillStyle='rgba(255,255,255,0.35)'; c.font='600 12px "PingFang SC",sans-serif'; c.fillText('尚未通关', 446, y); }
+    if(Save.data.best[i]){ c.fillStyle=UI.gold; c.font='700 13px "PingFang SC",sans-serif'; c.fillText('最佳 '+Save.data.best[i]+' 分', 446, y); }
+    else { c.fillStyle=UI.dim; c.font='600 12px "PingFang SC",sans-serif'; c.fillText('尚未通关', 446, y); }
     c.textAlign='left';
   }
   // 称号徽章墙
@@ -1755,36 +1874,38 @@ function drawHall(c,t){   // 荣誉室：已兑换礼品陈列 + 各关最佳 + 
       c.fillStyle='rgba(255,209,102,0.14)';
       c.beginPath(); roundRect(c,bx,by,w,h,17); c.fill();
       c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
-      c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillStyle=UI.gold; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
       c.fillText('🏅 '+g.title, bx+w/2, by+h/2+1);
       bx+=w+10;
     });
   }else{
-    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
     c.fillText('在礼品馆兑换礼品，徽章会挂在这里', 22, y3+32);
   }
   drawToast(c);
 }
-function drawTitles(c,t){   // 称号：当前等级进度 + 全部称号列表 + 礼品徽章
+function drawTitles(c,t){   // M5：称号界面（金色光晕当前称号卡 + 全部称号 + 礼品徽章）
   drawBG(c);
   const ti=titleInfo(Save.data.score);
   drawHeader(c,'🏅','称号','Lv.'+ti.lv+' '+ti.ti+' · 累计积分即经验');
-  // 当前称号卡
+  // 当前称号卡 + 金色光晕
   const cy0=78;
-  c.fillStyle='#2b2b3d'; c.beginPath(); roundRect(c,22,cy0,436,106,16); c.fill();
-  c.strokeStyle='rgba(255,209,102,0.45)'; c.lineWidth=2; c.stroke();
+  const rg=c.createRadialGradient(W/2,cy0+40,10,W/2,cy0+40,240);
+  rg.addColorStop(0,'rgba(255,209,102,0.14)'); rg.addColorStop(1,'rgba(255,209,102,0)');
+  c.fillStyle=rg; c.fillRect(0,cy0-40,W,240);
+  uiCard(c,{x:22,y:cy0,w:436,h:106,gold:true,line:'rgba(255,209,102,0.45)',r:16});
   c.textAlign='center'; c.textBaseline='middle';
-  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle='#ffd166';
+  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
   c.fillText('🏅 Lv.'+ti.lv+' '+ti.ti, W/2, cy0+40);
   if(ti.next){
     const pct=clamp((Save.data.score-ti.cur)/(ti.next[0]-ti.cur),0,1);
     const pw=380, px=(W-pw)/2, py=cy0+58;
     c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,px,py,pw,10,5); c.fill();
-    c.fillStyle='#ffd166'; c.beginPath(); roundRect(c,px,py,Math.max(10,pw*pct),10,5); c.fill();
+    c.fillStyle=UI.gold; c.beginPath(); roundRect(c,px,py,Math.max(10,pw*pct),10,5); c.fill();
     c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.6)';
     c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2, py+26);
   }else{
-    c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#7ee081';
+    c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle=UI.green;
     c.fillText('已达最高称号 · 发泄之神登顶！', W/2, cy0+74);
   }
   // 全部称号（两列）
@@ -1796,11 +1917,11 @@ function drawTitles(c,t){   // 称号：当前等级进度 + 全部称号列表 
     c.fillStyle=got?'rgba(255,209,102,0.12)':'rgba(255,255,255,0.04)';
     c.beginPath(); roundRect(c,rx,ry,tw,th,9); c.fill();
     c.strokeStyle=got?'rgba(255,209,102,0.4)':'rgba(255,255,255,0.08)'; c.lineWidth=1.5; c.stroke();
-    c.fillStyle=got?'#ffd166':'rgba(255,255,255,0.2)';
+    c.fillStyle=got?UI.gold:'rgba(255,255,255,0.2)';
     c.beginPath(); c.arc(rx+15,ry+th/2,4,0,Math.PI*2); c.fill();
     c.textAlign='left'; c.textBaseline='middle';
     c.font=got?'800 13px "PingFang SC",sans-serif':'600 13px "PingFang SC",sans-serif';
-    c.fillStyle=got?'#ffd166':'rgba(255,255,255,0.4)';
+    c.fillStyle=got?UI.gold:'rgba(255,255,255,0.4)';
     c.fillText(T[1], rx+30, ry+th/2+1);
     c.textAlign='right'; c.font='600 11px "PingFang SC",sans-serif';
     c.fillStyle=got?'rgba(255,255,255,0.55)':'rgba(255,255,255,0.28)';
@@ -1820,37 +1941,114 @@ function drawTitles(c,t){   // 称号：当前等级进度 + 全部称号列表 
       c.fillStyle='rgba(255,209,102,0.14)';
       c.beginPath(); roundRect(c,bx,by,w,h,16); c.fill();
       c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
-      c.fillStyle='#ffd166'; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillStyle=UI.gold; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
       c.fillText('🏅 '+g.title, bx+w/2, by+h/2+1);
       bx+=w+10;
     });
   }else{
-    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.35)';
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
     c.fillText('在礼品馆兑换礼品可获赠称号徽章', 22, y1+32);
   }
   drawToast(c);
 }
+function drawSettings(c,t){   // M5：设置界面（音量滑杆/音效开关/震动开关/重置存档/关于）
+  drawBG(c);
+  drawHeader(c,'⚙️','设置','音量 · 震动 · 存档管理');
+  c.textAlign='left'; c.textBaseline='top';
+  // —— 音效卡：音量滑杆 + 音效开关 ——
+  uiCard(c,{x:20,y:84,w:440,h:130,r:16});
+  c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('🔊 音效音量', 36, 100);
+  c.textAlign='right';
+  c.font='700 14px "PingFang SC",sans-serif'; c.fillStyle=UI.gold;
+  c.fillText(Math.round((Save.data.sfx===false?0:Save.data.vol)*100)+'%', 444, 100);
+  c.textAlign='left';
+  const trackX=44, trackW=392, trackY=128;
+  G.volBar={x:trackX-12,y:trackY-16,w:trackW+24,h:32};
+  c.fillStyle='rgba(255,255,255,0.12)'; c.beginPath(); roundRect(c,trackX,trackY,trackW,8,4); c.fill();
+  const vol=Save.data.sfx===false?0:Save.data.vol;
+  const kg=c.createLinearGradient(trackX,0,trackX+trackW,0);
+  kg.addColorStop(0,UI.gold); kg.addColorStop(1,UI.coral);
+  c.fillStyle=kg; c.beginPath(); roundRect(c,trackX,trackY,Math.max(8,trackW*vol),8,4); c.fill();
+  c.fillStyle='#fff'; c.beginPath(); c.arc(trackX+trackW*vol,trackY+4,12,0,Math.PI*2); c.fill();
+  c.strokeStyle=UI.gold; c.lineWidth=2.5; c.stroke();
+  c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('🔇 音效开关', 36, 168);
+  G.setSfxTgl={x:392,y:164,w:56,h:32};
+  drawToggle(c,392,166,Save.data.sfx);
+  // —— 震动卡 ——
+  uiCard(c,{x:20,y:222,w:440,h:60,r:16});
+  c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('📳 手机震动', 36, 242);
+  G.setVibTgl={x:392,y:236,w:56,h:32};
+  drawToggle(c,392,238,Save.data.vib);
+  // —— 存档卡：重置（二次确认） ——
+  uiCard(c,{x:20,y:290,w:440,h:76,r:16});
+  c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('🗑️ 重置存档', 36, 306);
+  if(G.resetArm){
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.coral;
+    c.fillText('⚠️ 再点一次右侧按钮确认清空', 36, 328);
+  }else{
+    c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
+    c.fillText('清除全部积分 / 星级 / 礼品，无法恢复', 36, 330);
+  }
+  G.resetBtn={x:336,y:302,w:104,h:44};
+  const rg2=c.createLinearGradient(0,302,0,346);
+  rg2.addColorStop(0,'#ffb35c'); rg2.addColorStop(1,UI.coral);
+  c.fillStyle=rg2; c.beginPath(); roundRect(c,G.resetBtn.x,G.resetBtn.y,G.resetBtn.w,G.resetBtn.h,22); c.fill();
+  c.strokeStyle='rgba(255,255,255,0.4)'; c.lineWidth=1.5; c.stroke();
+  c.fillStyle='#2a1308'; c.font='800 15px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+  c.fillText('重置', G.resetBtn.x+G.resetBtn.w/2, G.resetBtn.y+G.resetBtn.h/2+1);
+  c.textAlign='left'; c.textBaseline='top';
+  // —— 关于卡 ——
+  uiCard(c,{x:20,y:374,w:440,h:70,r:16});
+  c.font='700 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('砸个痛快 v'+VERSION, 36, 390);
+  c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
+  c.fillText('零依赖单文件 Canvas 小游戏 · 数据仅保存在本机浏览器', 36, 410);
+  drawToast(c);
+}
+function drawToggle(c,x,y,on){   // M5：开关胶囊（绿开/灰关）
+  c.fillStyle=on?UI.green:'rgba(255,255,255,0.15)';
+  c.beginPath(); roundRect(c,x,y,52,28,14); c.fill();
+  c.fillStyle='#fff';
+  c.beginPath(); c.arc(x+(on?38:14), y+14, 10, 0, Math.PI*2); c.fill();
+}
+function drawRotate(c,t){   // M5：横屏提示遮罩（旋转手机动画）
+  c.fillStyle='rgba(10,8,20,0.96)'; c.fillRect(0,0,W,H);
+  c.textAlign='center'; c.textBaseline='middle';
+  c.font='60px sans-serif'; c.fillStyle='#fff';
+  c.fillText('📱', W/2, H/2-70);
+  c.save(); c.translate(W/2+62,H/2-70); c.rotate(Math.sin(t*2.5)*0.5);
+  c.font='30px sans-serif'; c.fillText('🔄',0,0); c.restore();
+  c.font='800 26px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+  c.fillText('请竖屏游玩', W/2, H/2+8);
+  c.font='600 14px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+  c.fillText('把手机竖起来，砸得更爽', W/2, H/2+44);
+}
 function startLevel(n){
-  G.level=n; G.free=false; G.screen='play';
+  G.level=n; G.free=false; G.screen='play'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
   resetLevel();
 }
 function startFree(){  // 自由发泄屋：无尽刷分模式（第 3 关后解锁）
-  G.level=LEVELS.length; G.free=true; G.screen='play';
+  G.level=LEVELS.length; G.free=true; G.screen='play'; G.screenT=0; G.fade=0.24;
   resetLevel();
   for(let i=0;i<8;i++) spawnFree();   // 开场一波物品雨
 }
 function freeUnlocked(){ return Save.data.stars[2]>=1; }   // 通关第 3 关（1 星即可）解锁
-function openScreen(s){ G.screen=s; }   // 选关 → 礼品馆/荣誉室/称号
+function openScreen(s){ setScreen(s); }   // 选关 → 礼品馆/荣誉室/称号/设置
 function tryRedeem(i){                  // 兑换礼品：积分达标即可领取（不扣分），赠称号徽章
   const g=GIFTS[i];
   if(Save.hasGift(g.id)||Save.data.score<g.price){ AU.ui(); return; }
   Save.data.gifts.push(g.id); Save.save();
   AU.redeem();
   G.toast='🎁 已领取「'+g.name+'」 获得称号 '+g.title; G.toastT=3.2;
-  if(navigator.vibrate) navigator.vibrate([30,50,30,50,60]);
+  vib([30,50,30,50,60]);
 }
 function showLevelSelect(){
-  G.screen='select'; G.panel=false; G.free=false;
+  G.screen='select'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
+  G.panel=false; G.free=false;
   input.active=false; input.held=null;
   G.items=[]; G.fragments=[]; G.dust=[]; G.floaters=[];
   G.shakeAmp=0; G.timeScale=1; G.slowmoT=0; G.freezeT=0;
@@ -1878,6 +2076,9 @@ function frame(now){
   let realDt=Math.min((now-last)/1000,1/30); last=now;
   G.lastRealDt=realDt;
   if(G.toastT>0) G.toastT-=realDt;          // 兑换提示计时
+  if(G.fade>0) G.fade-=realDt;              // M5：切屏淡入遮罩
+  if(G.screenT<10) G.screenT+=realDt;       // M5：入场动画时钟
+  if(G.resetT>0){ G.resetT-=realDt; if(G.resetT<=0) G.resetArm=false; }   // M5：重置确认倒计时
   if(G.freezeT>0) G.freezeT-=realDt;        // 顿帧：世界暂停，画面照常渲染
   else if(G.screen==='play') step(realDt*G.timeScale, realDt);   // 慢动作：物理时间缩放
   render(now/1000);
