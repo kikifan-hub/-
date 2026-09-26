@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>砸个痛快 · 统一验收预览</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#20193a;color:#fff3df;font:15px 'PingFang SC',sans-serif}main{max-width:1120px;margin:auto;padding:20px;display:grid;grid-template-columns:1fr 440px;gap:24px}h1{font-size:32px;margin:12px 0}p{line-height:1.8;color:#dacde3}nav{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}button,a{font:inherit}button{min-height:44px;border:1px solid #a98cff;background:#302440;color:#fff3df;border-radius:10px;cursor:pointer}button:hover,button[aria-pressed=true]{background:#ff7a59;color:#241b30}iframe{width:100%;height:min(84dvh,783px);border:0;display:block;border-radius:16px;background:#191922}small{display:block;margin-top:18px;line-height:1.8;color:#d0bfdb}a{color:#ffd166}.tools{display:flex;gap:8px;margin-top:14px}.tools button{flex:1}@media(max-width:760px){main{display:flex;flex-direction:column;padding:12px;gap:14px}.game{order:-1}iframe{height:78dvh}h1{font-size:24px}nav{grid-template-columns:repeat(3,1fr)}}
+</style>
+<main><section><h1>一屋子生活，一场痛快。</h1><p>六关手绘场景与功能修复已合并到同一份游戏。按住前景物品，用力划动后松手；停住再松手是轻放，不是点击即碎。</p><nav id="levels" aria-label="场景快速验收"></nav><div class="tools"><button id="menu">真实选关菜单</button><button id="free">自由发泄屋</button></div><small>本页直接加载正式版 index.html，只有存档隔离。场景快捷按钮仅用于验收，不改变正式版解锁规则。礼品馆、荣誉室、称号和设置请从真实选关菜单进入。</small><p><a href="index.html" target="_blank">打开正式游戏（使用正式存档）</a></p><p id="status" role="status">正在加载统一版本…</p></section><section class="game"><iframe id="game" src="index.html?preview=1" title="砸个痛快隔离存档预览"></iframe></section></main>
+<script>
+const frame=document.querySelector('#game'),status=document.querySelector('#status');
+const names=['客厅','厨房','办公室','浴室','宴会厅','老板办公室'];
+function run(query){frame.src='index.html?preview=1&'+query;status.textContent='正在加载统一版本…'}
+names.forEach((name,i)=>{const b=document.createElement('button');b.textContent=name;b.onclick=()=>{run('level='+i);document.querySelectorAll('#levels button').forEach(el=>el.setAttribute('aria-pressed',String(el===b)))};document.querySelector('#levels').append(b)});
+document.querySelector('#menu').onclick=()=>run('mode=menu');document.querySelector('#free').onclick=()=>run('mode=free');
+frame.onload=()=>{status.textContent='统一版本 · 新版场景 + 原甩砸玩法 + 体验修复'};
+document.querySelectorAll('#levels button')[1].setAttribute('aria-pressed','true');
+</script>
+</html>

@@ -19,7 +19,7 @@
 </style>
 </head>
 <body>
-<canvas id="cv"></canvas>
+<canvas id="cv" aria-label="砸个痛快：按住物品，用力划动后松手甩出"></canvas>
 <script>
 'use strict';
 /* ================= 配置 ================= */
@@ -45,25 +45,29 @@ function roundRect(c,x,y,w,h,r){
   c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
 }
 
-/* ================= M5 UI 设计系统（深紫夜幕 + 金色/珊瑚高亮） ================= */
+/* ================= M7 UI 设计系统：霓虹破碎夜场（深紫底 + 金奖赏 + 珊瑚行动） ================= */
 const UI={
-  bg0:'#2b2440', bg1:'#14111d',
-  card:'#362d50', card2:'#2a2340',
-  line:'rgba(255,255,255,0.1)',
+  bg0:'#20193a', bg1:'#090b1a', bg2:'#120f28',
+  card:'#292348', card2:'#181633', cardHi:'#39305f',
+  line:'rgba(178,151,255,0.22)', neon:'#a98cff', cyan:'#67e8f9',
   gold:'#ffd166', goldD:'#c9971f',
   coral:'#ff7a59', green:'#7ee081', blue:'#9fd8ef',
-  sub:'rgba(255,255,255,0.62)', dim:'rgba(255,255,255,0.38)',
+  ink:'#0e0b1e', sub:'rgba(244,241,255,0.72)', dim:'rgba(218,208,255,0.45)',
 };
-function uiCard(c,r,opt){   // 通用卡片：渐变底 + 描边 + 顶部高光（opt:{fill,fill2,line,gold,flat,r}）
+function uiCard(c,r,opt){   // 通用卡片：深色玻璃 + 霓虹切角 + 顶部高光（opt:{fill,fill2,line,gold,flat,r}）
   opt=opt||{};
   const g=c.createLinearGradient(0,r.y,0,r.y+r.h);
-  g.addColorStop(0,opt.fill||UI.card); g.addColorStop(1,opt.fill2||opt.fill||UI.card2);
+  g.addColorStop(0,opt.fill||UI.cardHi); g.addColorStop(0.16,opt.fill||UI.card); g.addColorStop(1,opt.fill2||opt.fill||UI.card2);
   c.fillStyle=g; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,opt.r||18); c.fill();
-  c.strokeStyle=opt.line||UI.line; c.lineWidth=opt.gold?2.5:1.5; c.stroke();
+  c.strokeStyle=opt.line||(opt.gold?'rgba(255,209,102,0.72)':UI.line); c.lineWidth=opt.gold?2.5:1.5; c.stroke();
   if(!opt.flat){
     const hg=c.createLinearGradient(0,r.y,0,r.y+r.h*0.4);
-    hg.addColorStop(0,'rgba(255,255,255,0.07)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+    hg.addColorStop(0,'rgba(255,255,255,0.12)'); hg.addColorStop(1,'rgba(255,255,255,0)');
     c.fillStyle=hg; c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,opt.r||18); c.fill();
+    c.strokeStyle=opt.gold?UI.gold:UI.neon; c.globalAlpha=0.72; c.lineWidth=1.5;
+    c.beginPath(); c.moveTo(r.x+10,r.y+8); c.lineTo(r.x+30,r.y+8); c.moveTo(r.x+8,r.y+10); c.lineTo(r.x+8,r.y+24);
+    c.moveTo(r.x+r.w-10,r.y+r.h-8); c.lineTo(r.x+r.w-30,r.y+r.h-8); c.moveTo(r.x+r.w-8,r.y+r.h-10); c.lineTo(r.x+r.w-8,r.y+r.h-24); c.stroke();
+    c.globalAlpha=1;
   }
 }
 
@@ -596,22 +600,23 @@ const FREE_ROOM={   // 自由发泄屋：无尽物品刷分（第 3 关后解锁
 const FREE_POOL=['cup','cup','bottle','bottle','plate','plate','frame','mug','vase','bowl','kettle','papers','champagne','monitor','trophy','tv','safe'];
 
 /* ================= 存档（localStorage）+ 等级称号 ================= */
-const SAVE_KEY='zmt_save_v1';
+const SAVE_KEY=new URLSearchParams(location.search).get('preview')==='1'?'zmt_preview_throw_v1':'zmt_save_v1';
 const padArr=(a,n)=>(a&&Array.isArray(a)?a.slice(0,n).concat(new Array(Math.max(0,n-a.length)).fill(0)):new Array(n).fill(0));
+const saveNumber=(v,fallback=0)=>typeof v==='number'&&Number.isFinite(v)?Math.max(0,Math.min(v,Number.MAX_SAFE_INTEGER)):fallback;
 const Save={
   data:{score:0, stars:padArr(null,LEVELS.length), best:padArr(null,LEVELS.length), maxCombo:0, gifts:[],
     vol:0.7, vib:true, sfx:true},    // M5：音量/震动/音效设置（旧存档取默认）
   load(){
     try{
       const s=JSON.parse(localStorage.getItem(SAVE_KEY));
-      if(s){ this.data.score=s.score||0; this.data.stars=padArr(s.stars,LEVELS.length);
-        this.data.best=padArr(s.best,LEVELS.length); this.data.maxCombo=s.maxCombo||0;
-        this.data.gifts=Array.isArray(s.gifts)?s.gifts:[];
-        this.data.vol=typeof s.vol==='number'?s.vol:0.7;      // 旧存档无设置字段 → 默认
+      if(s&&typeof s==='object'){ this.data.score=Math.floor(saveNumber(s.score)); this.data.stars=padArr(s.stars,LEVELS.length).map(v=>Math.min(3,Math.floor(saveNumber(v))));
+        this.data.best=padArr(s.best,LEVELS.length).map(v=>Math.floor(saveNumber(v))); this.data.maxCombo=Math.floor(saveNumber(s.maxCombo));
+        this.data.gifts=Array.isArray(s.gifts)?[...new Set(s.gifts.filter(id=>GIFTS.some(g=>g.id===id)))]:[];
+        this.data.vol=Math.min(1,saveNumber(s.vol,0.7));      // 旧存档无设置字段 → 默认
         this.data.vib=s.vib!==false; this.data.sfx=s.sfx!==false; }
     }catch(e){}
   },
-  save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(this.data)); }catch(e){} },
+  save(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(this.data)); return true; }catch(e){ G.toast='保存失败：请检查浏览器存储空间或权限'; G.toastT=4; return false; } },
   addScore(n){ this.data.score+=n; },
   setStars(i,n){ if(n>this.data.stars[i]) this.data.stars[i]=n; },
   unlocked(i){ return i===0||this.data.stars[i-1]>=1; },
@@ -737,7 +742,7 @@ const GIFTS=[
     dia(-13,-2,7); dia(13,-2,7); dia(0,8,8);
     c.fillStyle='#c9971f'; c.beginPath(); c.arc(0,18,4,0,Math.PI*2); c.fill();      // 底部金球
   }},
-  {id:'chair', name:'老板椅（可砸）', price:25000, title:'打工人之光', desc:'砸掉工位的象征', draw(c){
+  {id:'chair', name:'老板椅纪念品', price:25000, title:'打工人之光', desc:'收藏打工人的痛快时刻', draw(c){
     c.fillStyle='#8a2f2b'; c.strokeStyle='#5f1f1c'; c.lineWidth=2.5;
     c.beginPath(); roundRect(c,-14,-50,28,10,5); c.fill(); c.stroke();              // 头枕
     c.beginPath(); roundRect(c,-22,-40,44,40,8); c.fill(); c.stroke();              // 靠背
@@ -832,7 +837,9 @@ function makeItems(){
   return (G.free?[]:LEVELS[G.level].items).map(makeItem);
 }
 function spawnFree(){  // 发泄屋：随机物品从空中落下（软着陆：不摔碎）
-  const t=FREE_POOL[(Math.random()*FREE_POOL.length)|0];
+  // 保留保险箱类型，但场内最多一个，避免不可破坏物品堵住刷新。
+  const pool=G.items.some(it=>it.state!=='gone'&&it.type.unbreakable)?FREE_POOL.filter(t=>!TYPES[t].unbreakable):FREE_POOL;
+  const t=pool[(Math.random()*pool.length)|0];
   const it=makeItem({t, x:rnd(60,W-60), s:'drop', y:-60});
   it.state='fly'; it.vy=0; it.vang=rnd(-3,3); it.soft=true;
   G.items.push(it);
@@ -853,14 +860,24 @@ const G={
   resetArm:false, resetT:0, sliderDrag:false,         // M5：设置界面状态
   retArm:false, retT:0,                                // M6：游戏内返回按钮二次确认
   volBar:null, setSfxTgl:null, setVibTgl:null, resetBtn:null, confetti:[],
+  paused:false, pauseBtn:null, resumeBtn:null, pauseExitBtn:null,
 };
 
 /* ================= M5 UI 改版：设置 / 动效 / 横屏 ================= */
 function setScreen(s){ G.screen=s; G.screenT=0; G.fade=0.24; }   // 切界面带淡入过渡
 function applyAudio(){ if(AU.master) AU.master.gain.value=Save.data.sfx===false?0:(typeof Save.data.vol==='number'?Save.data.vol:0.7); }
+function pauseGame(on){
+  if(G.screen!=='play') return;
+  G.paused=on; G.sliderDrag=false; input.samples=[];
+  if(on){
+    if(input.held){const it=input.held;it.state='fly';it.vx=0;it.vy=0;it.vang=0;}
+    input.active=false;input.held=null;input.id=null;
+    if(AU.master) AU.master.gain.value=0;
+  }else{last=performance.now();applyAudio();AU.resume();}
+}
 function vib(p){ if(Save.data.vib&&navigator.vibrate) navigator.vibrate(p); }
 function isLandscape(){ return window.innerWidth>window.innerHeight; }
-function resetAllSave(){ localStorage.removeItem(SAVE_KEY); location.reload(); }
+function resetAllSave(){try{localStorage.removeItem(SAVE_KEY);location.reload()}catch(e){G.toast='重置失败：浏览器不允许清理存档';G.toastT=4}}
 function setVolFromX(x){ Save.data.vol=clamp((x-44)/392,0,1); Save.save(); applyAudio(); }
 function confettiBurst(){   // 三星全清彩带雨
   const cols=['#ffd166','#ff7a59','#7ee081','#9fd8ef','#ff9fce'];
@@ -896,16 +913,29 @@ function toCanvas(e){
 function gestureVel(){
   const s=input.samples;
   if(s.length<2) return {x:0,y:0};
+  // Pointer 停止移动不会补采样；过期动作不应在松手时变成猛甩。
+  if(performance.now()-s[s.length-1].t>120) return {x:0,y:0};
   const a=s[0], b=s[s.length-1], dt=(b.t-a.t)/1000;
   if(dt<=0) return {x:0,y:0};
   return { x:(b.x-a.x)/dt, y:(b.y-a.y)/dt };
 }
-function inRect(p,r){ return r&&p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h; }
+function inRect(p,r){
+  if(!r) return false;
+  // 原矩形与画面不移动，向两侧补充小控件的透明点击区。
+  const dx=Math.max(0,(44-r.w)/2),dy=Math.max(0,(44-r.h)/2);
+  return p.x>=r.x-dx&&p.x<=r.x+r.w+dx&&p.y>=r.y-dy&&p.y<=r.y+r.h+dy;
+}
 function panelHit(p){ return inRect(p,G.btn1)||inRect(p,G.btn2)||inRect(p,G.btn3); }
 cv.addEventListener('pointerdown',e=>{
   if(isLandscape()) return;              // M5：横屏时忽略一切操作
   AU.unlock();
   const p=toCanvas(e);
+  if(G.screen==='play'&&G.paused){
+    if(inRect(p,G.resumeBtn)){pauseGame(false);AU.ui();}
+    else if(inRect(p,G.pauseExitBtn)){showLevelSelect();AU.ui();}
+    return;
+  }
+  if(G.screen==='play'&&!G.panel&&inRect(p,G.pauseBtn)){pauseGame(true);return;}
   if(G.screen==='settings'){             // M5 设置界面：返回/滑杆/开关/重置存档
     if(inRect(p,G.backBtn)){ AU.ui(); showLevelSelect(); return; }
     if(inRect(p,G.volBar)){ AU.ui(); G.sliderDrag=true; setVolFromX(p.x); return; }
@@ -1000,7 +1030,10 @@ document.addEventListener('touchmove',e=>{ if(input.active) e.preventDefault(); 
 document.addEventListener('touchstart',()=>AU.unlock(),{passive:true});
 document.addEventListener('touchend',()=>AU.unlock(),{passive:true});
 document.addEventListener('click',()=>AU.unlock());
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden) AU.resume(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) pauseGame(true); else AU.resume(); });
+window.addEventListener('blur',()=>pauseGame(true));
+window.addEventListener('resize',()=>{if(isLandscape())pauseGame(true)});
+window.addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Escape')&&G.screen==='play'&&!isLandscape()){e.preventDefault();pauseGame(!G.paused)}});
 // 微信内置浏览器专属：WeixinJSBridge 就绪前 WebAudio 被微信锁死，就绪后必须再解锁一次
 if(typeof WeixinJSBridge!=='undefined'){
   try{ WeixinJSBridge.invoke('getNetworkType',{},()=>AU.unlock()); }catch(e){}
@@ -1148,6 +1181,7 @@ function step(dt, realDt){
   if(G.panel) G.panelT+=realDt;
   if(G.hintT>0) G.hintT-=realDt;
   if(G.free){                              // 发泄屋：存活物品少于 9 件就不断刷新
+    G.items=G.items.filter(it=>it.state!=='gone');  // 碎片独立管理，无需保留失效物品
     G.freeSpawnT-=realDt;
     let alive=0;
     for(const it of G.items) if(it.state!=='gone') alive++;
@@ -1367,9 +1401,10 @@ function drawItem(c,it,scale,isHeld){
   c.restore();
   if(isHeld){                            // 手持高亮虚线
     c.save(); c.translate(it.x,it.y);
-    c.globalAlpha=0.5; c.strokeStyle='#fff'; c.setLineDash([5,5]); c.lineWidth=2;
+    c.globalAlpha=0.85; c.strokeStyle=UI.gold; c.setLineDash([5,5]); c.lineWidth=2;
     c.beginPath(); c.arc(0,0,it.r+6,0,Math.PI*2); c.stroke();
     c.setLineDash([]); c.restore();
+    if(it.type.unbreakable){c.save();c.fillStyle=UI.gold;c.font='700 12px sans-serif';c.textAlign='center';c.textBaseline='bottom';c.fillText('砸不碎，用它撞其他物品',clamp(it.x,100,380),Math.max(170,it.y-it.r-12));c.restore();}
   }
 }
 function drawFragments(c){
@@ -1421,13 +1456,13 @@ function drawTrajectory(c){
   }
   c.restore();
 }
-function drawHUD(c,t){   // M5：HUD（金圈返回 / 珊瑚连击横幅 / 金色通关线）
+function drawHUD(c,t){   // M7：霓虹 HUD（金色奖励 / 珊瑚连击 / 进度能量条）
   const g=c.createLinearGradient(0,0,0,110);
-  g.addColorStop(0,'rgba(20,16,34,0.6)'); g.addColorStop(1,'rgba(20,16,34,0)');
+  g.addColorStop(0,'rgba(9,11,26,0.86)'); g.addColorStop(1,'rgba(9,11,26,0)');
   c.fillStyle=g; c.fillRect(0,0,W,110);
   // 返回选关按钮
   G.backBtn={x:14,y:14,w:34,h:34};
-  c.fillStyle=G.retArm?'rgba(255,122,89,0.9)':'rgba(255,255,255,0.1)';   // M6：确认态珊瑚底
+  c.fillStyle=G.retArm?'rgba(255,122,89,0.9)':'rgba(169,140,255,0.14)';   // M6：确认态珊瑚底
   c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
   c.strokeStyle=G.retArm?UI.coral:'rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
   c.fillStyle=G.retArm?'#2a1308':UI.gold; c.font='800 22px "PingFang SC",sans-serif';
@@ -1462,9 +1497,10 @@ function drawHUD(c,t){   // M5：HUD（金圈返回 / 珊瑚连击横幅 / 金�
     c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.7)';
     c.fillText('无尽刷新 · 直接入账', bx+bw, by+34);
   }else{
-    c.fillStyle='rgba(0,0,0,0.35)'; c.beginPath(); roundRect(c,bx,by,bw,bh,6); c.fill();
+    c.fillStyle='rgba(7,8,20,0.72)'; c.beginPath(); roundRect(c,bx,by,bw,bh,6); c.fill();
     const pct=G.smashed/G.total;
-    c.fillStyle=UI.green; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
+    const pg=c.createLinearGradient(bx,0,bx+bw,0); pg.addColorStop(0,UI.cyan); pg.addColorStop(1,UI.green);
+    c.fillStyle=pg; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
     const mx=bx+bw*PASS_RATE;
     c.strokeStyle=UI.gold; c.lineWidth=2;
     c.beginPath(); c.moveTo(mx,by-2); c.lineTo(mx,by+bh+2); c.stroke();
@@ -1491,31 +1527,39 @@ function drawHint(c){
   c.textAlign='center'; c.textBaseline='top';
   const y=GROUND+48;
   c.font='700 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
-  c.fillText('👆 按住物品甩出去砸碎 · 单击 = 轻砸', W/2, y);
+  c.fillText('👆 按住 → 用力划动 → 松手甩出去', W/2, y);
   c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.75)';
   c.fillText(G.free?'物品会不断从天上掉下来 · 砸碎直接入账！':'砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
+  if(!input.active&&G.hintT>4){
+    const progress=(performance.now()%1200)/1200,x=160+progress*160;
+    c.strokeStyle=UI.gold;c.lineWidth=2;c.beginPath();c.moveTo(160,y+43);c.lineTo(320,y+43);c.lineTo(313,y+37);c.moveTo(320,y+43);c.lineTo(313,y+49);c.stroke();
+    c.fillStyle=UI.coral;c.beginPath();c.arc(x,y+43,5,0,Math.PI*2);c.fill();
+    c.font='600 10px sans-serif';c.fillStyle='#fff';c.fillText('快速划动，在末端松手',240,y+52);
+  }
   c.restore();
 }
-function drawBtn(c,r,txt,primary){   // M5：胶囊按钮（主按钮珊瑚渐变）
+function drawBtn(c,r,txt,primary){   // M7：霓虹按钮（主按钮仍为珊瑚行动色）
   if(primary){
     const g=c.createLinearGradient(0,r.y,0,r.y+r.h);
     g.addColorStop(0,'#ffb35c'); g.addColorStop(1,UI.coral);
     c.fillStyle=g;
-  }else c.fillStyle='rgba(255,255,255,0.12)';
+  }else c.fillStyle='rgba(169,140,255,0.15)';
   c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,r.h/2); c.fill();
-  c.strokeStyle=primary?'rgba(255,255,255,0.4)':'rgba(255,255,255,0.18)'; c.lineWidth=1.5; c.stroke();
-  c.fillStyle=primary?'#2a1308':'#fff';
+  c.strokeStyle=primary?'rgba(255,246,224,0.58)':'rgba(169,140,255,0.54)'; c.lineWidth=1.5; c.stroke();
+  c.fillStyle=primary?UI.ink:'#fff';
   c.font='800 17px "PingFang SC",sans-serif';
   c.textAlign='center'; c.textBaseline='middle';
   c.fillText(txt, r.x+r.w/2, r.y+r.h/2+1);
 }
-function drawPanel(c){   // M5：结算面板（金边卡 + 珊瑚主按钮 + 三星彩带）
-  c.fillStyle='rgba(10,8,20,0.74)'; c.fillRect(0,0,W,H);
+function drawPanel(c){   // M7：结算面板（聚光舞台 + 金色战利品 + 珊瑚行动）
+  c.fillStyle='rgba(5,6,17,0.80)'; c.fillRect(0,0,W,H);
   const cx=W/2, cy=H/2-30, pw=360, ph=400;
   const g=c.createLinearGradient(0,cy-ph/2,0,cy+ph/2);
-  g.addColorStop(0,'#322a4d'); g.addColorStop(1,'#241e3a');
+  g.addColorStop(0,'#342959'); g.addColorStop(0.35,'#211b43'); g.addColorStop(1,'#12112b');
   c.fillStyle=g; c.beginPath(); roundRect(c,cx-pw/2,cy-ph/2,pw,ph,20); c.fill();
   c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=2; c.stroke();
+  const glow=c.createRadialGradient(cx,cy-ph/2+90,4,cx,cy-ph/2+90,130);
+  glow.addColorStop(0,'rgba(255,209,102,0.13)'); glow.addColorStop(1,'rgba(255,209,102,0)'); c.fillStyle=glow; c.fillRect(cx-pw/2,cy-ph/2,pw,220);
   c.textAlign='center'; c.textBaseline='middle';
   c.fillStyle=UI.gold; c.font='800 28px "PingFang SC",sans-serif';
   c.fillText('清场成功！', cx, cy-ph/2+36);
@@ -1544,6 +1588,8 @@ function drawPanel(c){   // M5：结算面板（金边卡 + 珊瑚主按钮 + �
   c.fillText('最大连击 ×'+G.maxCombo+'   砸碎 '+G.smashed+'/'+G.total, cx, cy-ph/2+210);
   c.fillStyle='rgba(255,255,255,0.6)'; c.font='600 13px "PingFang SC",sans-serif';
   c.fillText('总积分 +'+G.lastAdd+' → 已有 '+Save.data.score, cx, cy-ph/2+238);
+  c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.sub;
+  c.fillText(stars<3?'点按钮外继续砸，清空全场冲三星！':'全部砸完，痛快！',cx,cy-ph/2+263);
   // 按钮：再砸一次 / 下一关 / 选关
   const bh=52, by=cy+ph/2-bh-20;
   if(G.level<LEVELS.length-1){
@@ -1594,6 +1640,10 @@ function render(t){
     drawVignette(c);
     if(G.hintT>0&&!G.panel) drawHint(c);
     if(G.panel) drawPanel(c);
+    drawToast(c);
+    G.pauseBtn={x:422,y:108,w:44,h:44};
+    if(!G.panel){c.fillStyle='rgba(43,36,64,.9)';c.beginPath();roundRect(c,422,108,44,44,10);c.fill();c.fillStyle=UI.gold;c.textAlign='center';c.textBaseline='middle';c.font='700 13px sans-serif';c.fillText('暂停',444,130);}
+    if(G.paused) drawPause(c);
   }
   if(G.fade>0){                              // M5：界面切换淡入遮罩
     c.fillStyle='rgba(10,8,20,'+Math.min(1,G.fade/0.24)*0.92+')';
@@ -1601,21 +1651,33 @@ function render(t){
   }
   if(isLandscape()) drawRotate(c,t);         // M5：横屏提示
 }
-function drawBG(c){   // M5：深紫夜幕 + 顶部暖光 + 底部暗角
+function drawPause(c){
+  c.fillStyle='rgba(15,12,27,.88)';c.fillRect(0,0,W,H);
+  c.textAlign='center';c.textBaseline='middle';c.fillStyle=UI.gold;c.font='800 28px sans-serif';c.fillText('歇一下，再砸个痛快',240,300);
+  c.fillStyle=UI.sub;c.font='600 13px sans-serif';c.fillText('物品、连击与刷新已暂停',240,342);
+  G.resumeBtn={x:100,y:390,w:280,h:56};G.pauseExitBtn={x:100,y:462,w:280,h:56};
+  drawBtn(c,G.resumeBtn,'继续砸',true);drawBtn(c,G.pauseExitBtn,'返回选关',false);
+  c.fillStyle=UI.sub;c.font='600 12px sans-serif';c.textAlign='center';
+  c.fillText(G.free?'发泄屋积分已逐件保存':G.panelCount>0?'通关后新增收益返回时保存':'尚未通关，返回不保存本轮积分',240,548);
+}
+function drawBG(c){   // M7：深紫夜场 + 霓虹光锥 + 极轻网格
   const g=c.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,UI.bg0); g.addColorStop(0.55,'#211b36'); g.addColorStop(1,UI.bg1);
+  g.addColorStop(0,UI.bg0); g.addColorStop(0.48,UI.bg2); g.addColorStop(1,UI.bg1);
   c.fillStyle=g; c.fillRect(0,0,W,H);
-  const rg=c.createRadialGradient(W/2,-80,20,W/2,-80,360);
-  rg.addColorStop(0,'rgba(255,122,89,0.12)'); rg.addColorStop(1,'rgba(255,122,89,0)');
-  c.fillStyle=rg; c.fillRect(0,0,W,360);
+  const rg=c.createRadialGradient(W*0.22,-60,20,W*0.22,-60,390);
+  rg.addColorStop(0,'rgba(169,140,255,0.24)'); rg.addColorStop(0.45,'rgba(103,232,249,0.045)'); rg.addColorStop(1,'rgba(103,232,249,0)');
+  c.fillStyle=rg; c.fillRect(0,0,W,410);
+  c.save(); c.globalAlpha=0.16; c.strokeStyle='rgba(169,140,255,0.19)'; c.lineWidth=1;
+  for(let x=-H;x<W+H;x+=48){ c.beginPath(); c.moveTo(x,H); c.lineTo(x+H*.36,0); c.stroke(); }
+  c.restore();
   const vg=c.createLinearGradient(0,H-180,0,H);
   vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.4)');
   c.fillStyle=vg; c.fillRect(0,H-180,W,180);
 }
-function drawHeader(c,icon,title,sub){   // M5：菜单系顶栏（金圈返回 + 标题 + 分隔线）
+function drawHeader(c,icon,title,sub){   // M7：菜单系顶栏（霓虹返回 / 标题 / 断裂分隔线）
   G.backBtn={x:14,y:14,w:34,h:34};
-  c.fillStyle='rgba(255,255,255,0.1)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
-  c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
+  c.fillStyle='rgba(169,140,255,0.15)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
+  c.strokeStyle='rgba(103,232,249,0.7)'; c.lineWidth=2; c.stroke();
   c.fillStyle=UI.gold; c.font='800 22px "PingFang SC",sans-serif';
   c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,26);
   c.textAlign='left'; c.textBaseline='top';
@@ -1623,12 +1685,12 @@ function drawHeader(c,icon,title,sub){   // M5：菜单系顶栏（金圈返回 
   c.fillText(icon+' '+title, 58, 14);
   c.fillStyle='rgba(255,255,255,0.55)'; c.font='600 12px "PingFang SC",sans-serif';
   c.fillText(sub, 60, 45);
-  c.strokeStyle='rgba(255,209,102,0.25)'; c.lineWidth=1.5;
-  c.beginPath(); c.moveTo(22,76); c.lineTo(W-22,76); c.stroke();
+  c.strokeStyle='rgba(169,140,255,0.38)'; c.lineWidth=1.5;
+  c.beginPath(); c.moveTo(22,76); c.lineTo(W*.57,76); c.moveTo(W*.61,76); c.lineTo(W-22,76); c.stroke();
 }
 function drawToast(c){   // 兑换成功提示条（淡入淡出）
   if(G.toastT<=0||!G.toast) return;
-  const fade=G.toastT>2.6?(3.2-G.toastT)/0.6:clamp(G.toastT/0.6,0,1);
+  const fade=clamp(G.toastT/0.6,0,1);
   c.save(); c.globalAlpha=clamp(fade,0,1);
   c.font='700 15px "PingFang SC",sans-serif';
   const w=c.measureText(G.toast).width+40;
@@ -1824,7 +1886,7 @@ function drawHall(c,t){   // M5：荣誉室（金色光晕展台 + 主题色成�
   // 陈列台：4 列 × 3 行（12 个展位）
   const cols=4, cw=106, ch=112, gap=10, x0=(W-cols*cw-(cols-1)*gap)/2, y0=78;
   for(let i=0;i<12;i++){
-    const col=i%4, row=(i/4)|0, cx=x0+col*(cw+gap)+cw/2, by=y0+row*(ch+12);
+    const col=i%4, row=(i/4)|0, cx=x0+col*(cw+gap)+cw/2, by=y0+row*(ch+4);
     const owned=Save.hasGift(GIFTS[i].id);
     if(owned){                                                       // 已兑换展位金色光晕
       const rg=c.createRadialGradient(cx,by+44,6,cx,by+44,40);
@@ -1850,13 +1912,13 @@ function drawHall(c,t){   // M5：荣誉室（金色光晕展台 + 主题色成�
       c.fillText(GIFTS[i].price+' 分', cx, by+98);
     }
   }
-  const y2=y0+3*(ch+12)+8;
+  const y2=y0+3*(ch+4)+8;
   // 各关最佳成绩
   c.textAlign='left'; c.textBaseline='top';
   c.font='800 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText('各关最佳成绩', 22, y2);
   for(let i=0;i<LEVELS.length;i++){
-    const y=y2+32+i*36;
+    const y=y2+32+i*30;
     c.fillStyle='rgba(255,255,255,0.05)';
     c.beginPath(); roundRect(c,22,y-22,436,30,8); c.fill();
     c.strokeStyle='rgba(255,255,255,0.07)'; c.lineWidth=1; c.stroke();
@@ -1871,21 +1933,21 @@ function drawHall(c,t){   // M5：荣誉室（金色光晕展台 + 主题色成�
     c.textAlign='left';
   }
   // 称号徽章墙
-  const y3=y2+32+LEVELS.length*36+14;
+  const y3=y2+32+LEVELS.length*30+14;
   c.font='800 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText('称号徽章', 22, y3);
   const owned=GIFTS.filter(g=>Save.hasGift(g.id));
   if(owned.length){
     let bx=22, by=y3+30;
     owned.forEach(g=>{
-      const w=132, h=34;
-      if(bx+w>W-22){ bx=22; by+=42; }
+      const w=102, h=28;
+      if(bx+w>W-22){ bx=22; by+=34; }
       c.fillStyle='rgba(255,209,102,0.14)';
       c.beginPath(); roundRect(c,bx,by,w,h,17); c.fill();
       c.strokeStyle='rgba(255,209,102,0.5)'; c.lineWidth=1.5; c.stroke();
-      c.fillStyle=UI.gold; c.font='700 13px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillStyle=UI.gold; c.font='700 10px "PingFang SC",sans-serif'; c.textAlign='center'; c.textBaseline='middle';
       c.fillText('🏅 '+g.title, bx+w/2, by+h/2+1);
-      bx+=w+10;
+      bx+=w+9;
     });
   }else{
     c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle=UI.dim;
@@ -2037,10 +2099,14 @@ function drawRotate(c,t){   // M5：横屏提示遮罩（旋转手机动画）
   c.fillText('把手机竖起来，砸得更爽', W/2, H/2+44);
 }
 function startLevel(n){
+  if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
+  G.panelCount=0; // 旧关收益已保存，避免 resetLevel 按新关索引再次结算
   G.level=n; G.free=false; G.screen='play'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
   resetLevel();
 }
 function startFree(){  // 自由发泄屋：无尽刷分模式（第 3 关后解锁）
+  if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
+  G.panelCount=0;
   G.level=LEVELS.length; G.free=true; G.screen='play'; G.screenT=0; G.fade=0.24;
   resetLevel();
   for(let i=0;i<8;i++) spawnFree();   // 开场一波物品雨
@@ -2050,20 +2116,24 @@ function openScreen(s){ setScreen(s); }   // 选关 → 礼品馆/荣誉室/称�
 function tryRedeem(i){                  // 兑换礼品：积分达标即可领取（不扣分），赠称号徽章
   const g=GIFTS[i];
   if(Save.hasGift(g.id)||Save.data.score<g.price){ AU.ui(); return; }
-  Save.data.gifts.push(g.id); Save.save();
+  Save.data.gifts.push(g.id); if(!Save.save()) return;
   AU.redeem();
   G.toast='🎁 已领取「'+g.name+'」 获得称号 '+g.title; G.toastT=3.2;
   vib([30,50,30,50,60]);
 }
 function showLevelSelect(){
+  if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore(); // 通关后继续砸的新增收益退出也保留
   G.screen='select'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
   G.panel=false; G.free=false;
+  G.paused=false; G.pauseBtn=null;applyAudio();
   input.active=false; input.held=null;
   G.items=[]; G.fragments=[]; G.dust=[]; G.floaters=[];
   G.shakeAmp=0; G.timeScale=1; G.slowmoT=0; G.freezeT=0;
 }
 function resetLevel(){
+  if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
   G.items=makeItems();
+  G.paused=false;G.pauseBtn=null;applyAudio();
   G.fragments=[]; G.dust=[]; G.floaters=[];
   G.score=0; G.scoreShow=0; G.combo=0; G.comboT=0; G.maxCombo=0;
   G.smashed=0;
@@ -2078,7 +2148,197 @@ function resetLevel(){
 }
 
 /* ================= 启动 ================= */
+/* ================= 统一手绘场景：从预览迁入，静态缓存 ================= */
+(()=>{
+let c=ctx, sceneCache=null, sceneArt;
+const P={ink:'#241b30',paper:'#fff3df',gold:'#ffd166',coral:'#ff7a59',mint:'#a5d7ca',lilac:'#b7a0d2'};
+function box(x,y,w,h,color,r=12,stroke=true){c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=color;c.fill();if(stroke){c.lineWidth=3;c.strokeStyle=P.ink;c.stroke()}}
+function text(s,x,y,size=16,color=P.paper,weight=700,align='left'){c.font=weight+' '+size+'px "PingFang SC","Microsoft YaHei",sans-serif';c.fillStyle=color;c.textAlign=align;c.textBaseline='middle';c.fillText(s,x,y)}
+function poly(pts,color){c.beginPath();pts.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.closePath();c.fillStyle=color;c.fill();c.strokeStyle=P.ink;c.lineWidth=3;c.stroke()}
+function oval(x,y,rx,ry,color,stroke=true){c.beginPath();c.ellipse(x,y,rx,ry,0,0,7);c.fillStyle=color;c.fill();if(stroke){c.strokeStyle=P.ink;c.lineWidth=3;c.stroke()}}
+function line(x,y,x2,y2,col=P.ink,width=3){c.beginPath();c.moveTo(x,y);c.lineTo(x2,y2);c.strokeStyle=col;c.lineWidth=width;c.stroke()}
+function star(x,y,r,color=P.gold){let pts=[];for(let i=0;i<10;i++){let a=-Math.PI/2+i*Math.PI/5,q=i%2?r*.45:r;pts.push([x+Math.cos(a)*q,y+Math.sin(a)*q])}poly(pts,color)}
+function plant(x,y,s=1){c.save();c.translate(x,y);c.scale(s,s);line(0,0,0,-78,'#4a6d59',4);for(let i=0;i<4;i++){oval((i%2?1:-1)*15,-20-i*16,19,8,'#6da78b')}poly([[-22,-2],[22,-2],[17,29],[-17,29]],'#e3a281');c.restore()}
+function picture(x,y,w,h){box(x,y,w,h,'#d5ab76',3);box(x+6,y+6,w-12,h-12,P.paper,0,false);oval(x+w*.73,y+h*.3,9,9,P.gold,false);poly([[x+8,y+h-8],[x+w*.4,y+h*.37],[x+w*.62,y+h*.68],[x+w*.8,y+h*.47],[x+w-8,y+h-8]],'#8da79e')}
+function lamp(x,y){poly([[x-33,y],[x+33,y],[x+22,y-47],[x-22,y-47]],P.gold);line(x,y,x,y+119,'#514153',5);oval(x,y+123,26,7,'#514153')}
+function chair(x,y,color='#d29c95'){box(x,y,56,76,color,12);box(x-10,y+63,76,18,color,7);line(x+28,y+81,x+28,y+111);line(x+28,y+111,x-6,y+123);line(x+28,y+111,x+62,y+123);oval(x-6,y+123,5,5,P.ink);oval(x+62,y+123,5,5,P.ink)}
+function groundShadow(x,y,w,h=12){oval(x,y,w,h,'#241b3028',false)}
+function flower(x,y,r=7){for(let i=0;i<5;i++){const a=i*Math.PI*2/5;oval(x+Math.cos(a)*r*.65,y+Math.sin(a)*r*.65,r*.48,r*.48,'#e9a2b7',false)}oval(x,y,r*.3,r*.3,'#e7b64b',false)}
+function gingham(x,y,w,h,col='#df89a3'){box(x,y,w,h,'#f7d8dc',3);c.save();c.beginPath();c.rect(x+2,y+2,w-4,h-4);c.clip();for(let xx=x;xx<x+w;xx+=12){c.fillStyle=col+'88';c.fillRect(xx,y,5,h)}for(let yy=y;yy<y+h;yy+=12){c.fillStyle=col+'66';c.fillRect(x,yy,w,5)}c.restore()}
+function jar(x,y,w,h,col,label=true){box(x,y,w,h,col,4);box(x-1,y-4,w+2,6,'#d9b35b',2);line(x+4,y+6,x+4,y+h-5,'#ffffff65',2);if(label){box(x+3,y+h*.3,w-6,h*.36,'#f5e5b8',2);flower(x+w/2,y+h*.48,4)}}
+function basket(x,y,w,h){oval(x+w/2,y+h,w*.45,5,'#241b3020',false);box(x,y,w,h,'#c59b58',8);for(let yy=y+4;yy<y+h;yy+=6)line(x+3,yy,x+w-3,yy,'#8e653d',1);for(let xx=x+5;xx<x+w;xx+=8)line(xx,y+2,xx+4,y+h-2,'#e6bd75',1);oval(x+w/2,y,w/2,5,'#9e7444')}
+function curtain(x,y,w,h,col){box(x-5,y-9,w+10,7,'#b28d64',3);for(let i=0;i<5;i++){box(x+i*w/5,y,w/5+2,h-(i%2)*5,col,3);line(x+i*w/5+5,y+4,x+i*w/5+5,y+h-8,'#241b3026',1)}line(x+1,y+h-30,x+w-1,y+h-30,'#e4bd82',3)}
+function bookStack(x,y,w,count=3){for(let i=0;i<count;i++){const yy=y-i*7;box(x+i%2*3,yy,w-i%2*5,7,[P.coral,P.mint,P.gold,P.lilac][i%4],1);line(x+5,yy+4,x+w-5,yy+4,'#fff3df88',1)}}
+function paper(x,y,w,h){box(x,y,w,h,'#f2e9d7',1);for(let i=0;i<3;i++)line(x+4,y+5+i*5,x+w-5,y+5+i*5,'#b5ab9b',1)}
+function towel(x,y,w,h,col){gingham(x,y,w,h,col);for(let i=0;i<w;i+=4)line(x+i,y+h,x+i,y+h+4,'#e8d8d5',1)}
+function candle(x,y){box(x-4,y-20,8,20,P.paper,2);oval(x,y-25,3,5,P.gold,false);oval(x,y+1,9,3,'#aa8656');const g=c.createRadialGradient(x,y-25,1,x,y-25,24);g.addColorStop(0,'#ffe9a538');g.addColorStop(1,'#ffe9a500');c.fillStyle=g;c.fillRect(x-24,y-49,48,48)}
+function artPath(points,fill,edge='#493a42',lw=1.6){c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.closePath();c.fillStyle=fill;c.fill();if(edge){c.strokeStyle=edge;c.lineWidth=lw;c.stroke()}}
+function artRect(x,y,w,h,fill,r=3){c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=fill;c.fill();c.lineWidth=1.4;c.strokeStyle='#493a42';c.stroke()}
+function artEllipse(x,y,rx,ry,col,edge=true){c.beginPath();c.ellipse(x,y,rx,ry,0,0,7);c.fillStyle=col;c.fill();if(edge){c.lineWidth=1.4;c.strokeStyle='#493a42';c.stroke()}}
+function grain(x,y,w,h,color,count=70){c.save();c.beginPath();c.rect(x,y,w,h);c.clip();for(let i=0;i<count;i++){const xx=x+((i*73+17)%w),yy=y+((i*41+13)%h);line(xx,yy,xx+3+i%9,yy+Math.sin(i)*1.4,color,.65)}c.restore()}
+function panel(x,y,w,h,color){artRect(x,y,w,h,color,2);artRect(x+5,y+5,w-10,h-10,color,2);grain(x+6,y+6,w-12,h-12,'#fff4d735',20);line(x+9,y+h*.55,x+w-9,y+h*.55,'#395b6222',1)}
+function brassHandle(x,y,w=20){c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+w/2,y+7,x+w,y);c.strokeStyle='#a05845';c.lineWidth=3;c.stroke();artEllipse(x,y,2,2,'#ce8a58');artEllipse(x+w,y,2,2,'#ce8a58')}
+function counter(x,y,w,d,h,col,top='#ead6b3'){
+ groundShadow(x+w/2,y+h+5,w*.56,10);
+ artPath([[x+w,y],[x+w+d,y-d*.5],[x+w+d,y+h-d*.5],[x+w,y+h]],'#548f91');
+ artRect(x,y,w,h,col,1);
+ artPath([[x,y],[x+d,y-d*.5],[x+w+d,y-d*.5],[x+w,y]],top);
+ for(let j=0;j<Math.max(1,Math.floor(w/65));j++){const n=Math.max(1,Math.floor(w/65)),cw=w/n;panel(x+j*cw+5,y+7,cw-10,h-15,col);brassHandle(x+j*cw+cw/2-9,y+23,18)}
+ grain(x,y,w,h,'#15485025',50);
+}
+function vaseFlowers(x,y,s=.8){c.save();c.translate(x,y);c.scale(s,s);for(let i=0;i<8;i++){const xx=(i-3.5)*6,yy=-29-(i%3)*10;line(0,-4,xx,yy,'#577d50',1.6);artEllipse(xx-4,yy+9,7,3,'#8ca360',false);flower(xx,yy,6)}artPath([[-9,-5],[9,-5],[14,4],[8,18],[-8,18],[-14,4]],'#d8959d');artEllipse(0,-5,9,3,'#efc0bb');c.restore()}
+function tin(x,y,w,h,col){artRect(x,y,w,h,col,3);artEllipse(x+w/2,y,w/2,3,'#e6c787');line(x+3,y+6,x+3,y+h-5,'#fff4d780',1.5);for(let i=0;i<2;i++)flower(x+w*.55,y+9+i*12,4)}
+function crockery(x,y,r=20){artEllipse(x,y,r,r*.34,'#fff5dd');artEllipse(x,y,r*.8,r*.25,'#65aeb6');artEllipse(x,y,r*.62,r*.18,'#fff5dd');for(let i=0;i<9;i++){const a=i*7/9;artEllipse(x+Math.cos(a)*r*.87,y+Math.sin(a)*r*.27,2,1.2,'#d57a69',false)}}
+function produce(x,y){basket(x,y,47,23);for(let i=0;i<6;i++){artEllipse(x+8+i*6,y-2-i%2*3,7,6,['#d78858','#9aa650','#bf5c4c'][i%3]);line(x+8+i*6,y-9-i%2*3,x+9+i*6,y-12,'#5d7e49',1)}}
+function kettleArt(x,y,s=1,col='#81bfb3'){c.save();c.translate(x,y);c.scale(s,s);artEllipse(0,-21,19,16,col);artPath([[-13,-9],[13,-9],[18,2],[-18,2]],col);artEllipse(0,-34,13,4,'#e2d4a8');artEllipse(0,-38,4,3,'#463e38');c.beginPath();c.arc(0,-32,18,Math.PI,Math.PI*2);c.lineWidth=5;c.strokeStyle='#51463d';c.stroke();artPath([[-15,-17],[-30,-24],[-26,-13],[-17,-8]],col);line(-8,-29,-11,-14,'#f2f4d880',2);c.restore()}
+function cookingPot(x,y,s=1,col='#dcb657'){c.save();c.translate(x,y);c.scale(s,s);artRect(-23,-23,46,23,col,6);artEllipse(0,-23,24,7,col);artEllipse(0,-25,18,5,'#ece0b3');artEllipse(0,-31,4,4,'#473d37');line(-24,-13,-32,-13,'#756a4d',4);line(24,-13,32,-13,'#756a4d',4);line(-15,-17,-15,-6,'#fff3d87a',2);c.restore()}
+function artWindow(x,y,w,h,night=false){
+ artRect(x,y,w,h,'#438e9f',3);artRect(x+7,y+8,w-14,h-16,night?'#475c77':'#d7e9cd',1);
+ c.save();c.beginPath();c.rect(x+9,y+9,w-18,h-18);c.clip();
+ if(night){for(let i=0;i<10;i++){const xx=x+10+i*(w-18)/10,hh=20+(i*31)%75;artRect(xx,y+h-hh,(w-18)/10-1,hh,'#273f57',0);for(let j=0;j<4;j++)artRect(xx+3,y+h-hh+5+j*14,3,4,j%2?'#b7ced1':'#e8d298',0)}}else{
+  artPath([[x+8,y+h*.56],[x+w*.55,y+h*.46],[x+w,y+h*.59],[x+w,y+h],[x,y+h]],'#b5c586',null);
+  artPath([[x+w*.5,y+h*.52],[x+w*.65,y+h*.35],[x+w*.88,y+h*.52]],'#bd7469');artRect(x+w*.56,y+h*.51,w*.27,h*.19,'#dfad87',1);artRect(x+w*.66,y+h*.54,9,14,'#735b5c',1);
+  for(let i=0;i<32;i++){const xx=x+11+(i*47)%(w-22),yy=y+h*.63+(i*17)%(h*.32);artEllipse(xx,yy,8+i%5,6+i%3,['#769c72','#9eae6b','#b7c886'][i%3],false);if(i%4===0)flower(xx,yy,3)}
+ }
+ c.restore();for(let i=1;i<3;i++)line(x+w*i/3,y+8,x+w*i/3,y+h-8,'#438e9f',5);line(x+8,y+h*.48,x+w-8,y+h*.48,'#438e9f',5);
+ artRect(x-5,y+h-3,w+10,10,'#498f9c',2);grain(x,y,w,h,'#133e5424',24);
+ for(let i=0;i<3;i++){artRect(x-4,y-5+i*7,w+8,9,'#e4cfad',2);line(x,y+i*7,x+w,y+i*7,'#ad957941',1)}
+ line(x+w-3,y,x+w-3,y+62,'#8b7459',1);artEllipse(x+w-3,y+66,2,5,'#b89463');
+}
+function artShelf(x,y,w){artPath([[x,y],[x+10,y-7],[x+w+10,y-7],[x+w,y]],'#d7b084');artRect(x,y,w,9,'#b68b62',1);artPath([[x+10,y+9],[x+25,y+9],[x+10,y+26]],'#b78b61');artPath([[x+w-20,y+9],[x+w-6,y+9],[x+w-6,y+26]],'#b78b61');grain(x,y,w,9,'#704a392b',20)}
+function tileWall(x,y,w,h,floral=true){c.fillStyle='#f1e9d7';c.fillRect(x,y,w,h);for(let yy=y;yy<y+h;yy+=38)for(let xx=x;xx<x+w;xx+=43){line(xx,yy,xx+43,yy,'#cbbfad',.8);line(xx,yy,xx,yy+38,'#cbbfad',.8);if(floral&&(Math.floor(xx/43)+Math.floor(yy/38))%3===0){flower(xx+21,yy+20,6);line(xx+25,yy+25,xx+31,yy+30,'#8da370',1.7);artEllipse(xx+29,yy+27,4,2,'#91a277',false)}}}
+function roomPaper(level){
+ const colors=[['#e6d9bd','#b98e69'],['#f1e9d8','#bfaa80'],['#dcdcd0','#ab937a'],['#dfeae0','#aac5b9'],['#ead1b4','#af896a'],['#cdc9b7','#957459']][level];
+ const g=c.createLinearGradient(0,0,0,550);g.addColorStop(0,colors[0]);g.addColorStop(1,colors[0]);c.fillStyle=g;c.fillRect(0,0,480,854);
+ artPath([[0,83],[28,104],[28,377],[0,414]],'#a9977c');artPath([[480,83],[453,104],[453,377],[480,414]],'#b1a08a');
+ artPath([[0,414],[28,377],[453,377],[480,414],[480,854],[0,854]],colors[1]);
+ for(let x=-800;x<1300;x+=130)line(240+(x-240)*.16,377,x,854,'#715c4239',1);
+ for(let y of [402,434,475,527,593,676,780])line(0,y,480,y,'#80644c35',1);
+ line(28,377,453,377,'#87735b',5);line(0,414,28,377,'#87735b',5);line(453,377,480,414,'#87735b',5);
+ grain(30,106,422,269,'#77644e12',170);grain(1,410,478,442,'#68563d15',230);
+}
+function sofaArt(x,y,w,col='#91b6a2'){
+ groundShadow(x+w/2,y+134,w*.58,14);artPath([[x+w,y+10],[x+w+20,y+23],[x+w+20,y+115],[x+w,y+126]],'#648875');artRect(x,y,w,84,col,13);
+ for(let i=0;i<3;i++){artRect(x+8+i*(w-16)/3,y+9,(w-20)/3,67,col,8);line(x+14+i*(w-16)/3,y+62,x+47+i*(w-16)/3,y+62,'#60887944',1)}
+ artPath([[x+12,y+78],[x+w-12,y+78],[x+w+2,y+105],[x-2,y+105]],'#b4ceae');artRect(x-2,y+105,w+4,18,'#7d9f85',4);artRect(x-10,y+63,25,56,col,8);artRect(x+w-15,y+63,25,56,col,8);
+ line(x+16,y+125,x+15,y+134,'#735c48',4);line(x+w-12,y+125,x+w-11,y+134,'#735c48',4);
+ gingham(x+25,y+38,35,31,'#cb978c');artRect(x+w-72,y+36,37,32,'#e5c99b',6);flower(x+w-53,y+52,7);grain(x,y,w,110,'#4b695e1c',50);
+}
+function booksArt(x,y,w,h,col='#a48662'){counter(x,y,w,10,h,col);for(let row=0;row<3;row++){const yy=y+10+row*(h-15)/3;artRect(x+7,yy,w-14,(h-24)/3,'#6d645a',1);for(let j=0;j<7;j++){const xx=x+11+j*(w-22)/7,bh=(h-35)/3-((j*7)%12);artRect(xx,yy+(h-26)/3-bh,(w-22)/7-3,bh,['#ba8572','#819c8e','#c2ac75','#a494a8'][j%4],1);line(xx+2,yy+(h-26)/3-bh+6,xx+(w-22)/7-6,yy+(h-26)/3-bh+6,'#f1dfbd',.8)}}}
+function bathArt(x,y,w){groundShadow(x+w/2,y+83,w*.5,12);artPath([[x,y],[x+w,y],[x+w-13,y+67],[x+13,y+67]],'#ebe5d2');artEllipse(x+w/2,y,w/2,24,'#f4eee0');artEllipse(x+w/2,y,w/2-9,18,'#84b6b4');artEllipse(x+w/2,y,w/2-20,12,'#b3d7c9');for(let i=0;i<6;i++)line(x+26+i*20,y,x+35+i*20,y-2,'#edf8db',1.5);line(x+25,y+67,x+25,y+78,'#816e62',4);line(x+w-27,y+67,x+w-27,y+78,'#816e62',4)}
+sceneArt=function(level){
+ roomPaper(level);
+ if(level===0){
+  // 沙发沿后墙落地，围绕窗光建立温暖的生活客厅。
+  artWindow(45,133,127,172);curtain(32,129,22,184,'#b18789');curtain(164,129,22,184,'#b18789');
+  picture(214,133,92,73);picture(331,149,69,52);artShelf(201,249,211);bookStack(208,245,32,4);vaseFlowers(259,240,.55);picture(288,219,28,27);tin(332,231,19,14,'#9bb8aa');plant(387,229,.3);
+  sofaArt(49,345,251);lamp(419,317);groundShadow(419,445,28,7);
+  counter(331,360,99,12,83,'#b39973');bookStack(343,355,34,3);vaseFlowers(406,344,.5);
+  artEllipse(181,675,158,58,'#b66f7b');artEllipse(181,675,144,48,'#d7a698');artEllipse(181,675,126,38,'#c8948d');for(let i=0;i<15;i++)flower(65+i*16,675+Math.sin(i)*22,3);
+  produce(25,517);basket(36,485,41,32);paper(39,479,15,23);paper(56,474,14,27);plant(31,460,.62);
+  // 原相框位于墙面，补上悬挂点；前景电视不重复画背景电视。
+  line(304,283,294,309,'#79634f',1);line(304,283,320,309,'#79634f',1);artEllipse(304,282,2,2,'#594735');
+  artRect(441,394,9,16,'#eee7d4',1);line(445,410,445,438,'#73665e',1);line(445,438,421,445,'#73665e',1);
+ }else if(level===1){
+  tileWall(28,104,425,275);
+  artWindow(40,139,151,177);plant(72,287,.38);flower(62,258,6);flower(82,252,6);
+  artShelf(218,133,214);for(let i=0;i<5;i++)tin(226+i*25,103+i%2*4,18,26-i%2*4,['#dfb861','#ba8aab','#8aad8a','#84b8c4','#d29a65'][i]);basket(358,111,56,19);crockery(389,104,19);
+  line(225,172,433,172,'#a88158',4);
+  for(let i=0;i<7;i++){const x=235+i*29;line(x,173,x,189,'#7b7162',1);if(i===0||i===3){gingham(x-10,188,23,54,i===0?'#bf666b':'#b98dab');line(x-7,244,x+8,244,'#b96b6e',2)}else{artRect(x-3,190,6,26,['#d4a764','#85b9b7','#c66c62'][i%3],2);line(x,215,x,229,'#8b9390',3);artEllipse(x,238,i===6?13:8,i===6?17:11,'#adb7b1');if(i===2||i===5)for(let k=-1;k<2;k++)line(x+k*4,232,x+k*4,244,'#657772',1)}}
+  counter(35,343,386,19,105,'#68a9b0','#e4c3b0');artPath([[35,343],[54,327],[443,327],[421,343]],'#ecd7be');
+  artPath([[48,335],[54,309],[165,309],[160,335]],'#ecdfcc');artPath([[59,330],[65,314],[153,314],[150,330]],'#78b8bc');
+  for(let i=0;i<7;i++)line(66+i*11,321,74+i*11,322,'#e0efde',1.3);
+  c.beginPath();c.moveTo(106,310);c.lineTo(106,286);c.bezierCurveTo(106,265,137,265,137,287);c.strokeStyle='#b95548';c.lineWidth=7;c.stroke();line(137,287,137,310,'#bde7d577',2);artEllipse(106,309,12,4,'#b95548');
+  artRect(189,315,114,22,'#e6c16e',2);for(let x of [214,278]){artEllipse(x,324,18,7,'#4b514d');for(let i=0;i<5;i++)artEllipse(x-12+i*6,321,2,5,'#89b9cb',false)}cookingPot(213,315,.76);kettleArt(278,313,.8,'#8ab99b');
+  artRect(190,357,104,77,'#ddc89a',3);artRect(198,370,88,53,'#637171',4);brassHandle(215,371,51);for(let i=0;i<4;i++)artEllipse(204+i*25,349,5,5,'#d5ba86');
+  tin(326,294,24,39,'#a3b487');for(let i=0;i<7;i++)line(329+i*3,296,322+i*5,266-i%3*5,'#9d7952',1.8);
+  jar(360,289,17,43,'#b18456');jar(382,302,15,30,'#9fb6c4');produce(158,304);crockery(401,321,15);towel(58,384,29,51,'#d79cae');
+  line(29,453,54,487,'#715c4620',2);plant(440,489,.51);
+ }else if(level===2){
+  artWindow(40,132,141,158);for(let yy=149;yy<282;yy+=13)line(48,yy,173,yy,'#e3dfcfaa',3);
+  artRect(217,137,207,106,'#9e8768',4);artRect(224,144,193,92,'#e9e8d5',2);text('少开会，多痛快',236,163,15,'#7c796a',700);for(let i=0;i<7;i++){const x=237+i%4*42,y=181+Math.floor(i/4)*25;artRect(x,y,31,18,['#e4c879','#abc3ae','#c8948f'][i%3],1);line(x+4,y+6,x+23,y+6,'#7d756866',1);line(x+4,y+11,x+19,y+11,'#7d756866',1)}
+  booksArt(45,325,114,126,'#aabbb0');artRect(57,306,85,24,'#e3dfce',4);artRect(73,295,53,16,'#cad0c7',2);paper(70,312,48,8);
+  counter(211,367,205,15,73,'#a0b6ad');bookStack(225,361,36,4);tin(283,341,20,21,'#d9b688');for(let i=0;i<5;i++)line(287+i*3,341,283+i*5,323,'#7b7461',1.7);vaseFlowers(394,347,.47);
+  artShelf(208,283,216);bookStack(218,278,36,3);jar(278,262,14,18,'#a6b8a2');picture(338,252,23,27);plant(401,263,.31);
+  c.save();c.translate(181,400);c.scale(.85,.85);chair(0,0,'#8a9993');c.restore();groundShadow(208,509,38,8);
+  basket(35,507,35,38);paper(39,492,12,24);paper(52,488,13,28);artRect(364,477,49,12,'#e3dfca',3);for(let i=0;i<4;i++)artEllipse(371+i*10,482,2,2,'#7a8577');line(364,482,339,460,'#7e796b',1);
+  plant(439,455,.6);artRect(295,270,43,43,'#efe5ce',5);artEllipse(317,292,17,17,'#f3edd8');line(317,292,317,280,'#806b5b',2);line(317,292,328,296,'#806b5b',2);
+ }else if(level===3){
+  tileWall(28,104,425,275,false);artWindow(39,130,92,134);plant(79,242,.32);
+  artRect(154,135,124,142,'#b09173',4);artRect(162,143,108,126,'#a7c9c5',2);artPath([[168,241],[247,148],[262,148],[185,261]],'#eaf4e06b',null);artShelf(151,283,140);
+  tin(158,260,13,21,'#a5bfab');tin(185,261,14,20,'#d9ada7');for(let i=0;i<3;i++)line(188+i*4,261,186+i*6,246,'#82a6a9',1.5);jar(249,252,15,28,'#d7bd8f');
+  counter(150,358,137,16,86,'#8eb3a0');artEllipse(219,348,57,16,'#f0e9d6');artEllipse(219,348,44,10,'#9ab5ae');line(220,335,220,315,'#91a29d',6);line(220,315,238,315,'#91a29d',6);jar(164,326,13,24,'#9da89b');
+  artPath([[330,144],[425,135],[436,390],[330,410]],'#bdd6c977');line(331,149,331,408,'#839e9b',2);line(380,143,380,398,'#839e9b',2);line(424,141,436,390,'#839e9b',2);line(342,163,342,384,'#f6f1de9c',2);line(405,177,405,211,'#9ca9a2',4);artEllipse(398,217,13,4,'#9ca9a2');
+  bathArt(248,465,180);jar(397,443,10,21,'#b39eaa');vaseFlowers(262,446,.3);
+  artRect(47,393,55,60,'#ede8d8',5);artRect(60,445,35,67,'#e9e1cc',9);artEllipse(76,457,34,16,'#f4efde');artEllipse(76,457,24,10,'#b2c9bb');groundShadow(77,519,38,9);
+  line(43,304,124,304,'#9eaa9e',4);towel(50,307,32,56,'#c79da8');towel(85,307,29,47,'#a1bb9b');artEllipse(91,555,50,18,'#d3a8aa');artEllipse(91,555,41,12,'#dfc2b5');
+  artEllipse(179,498,10,17,'#d5ac93');artEllipse(204,505,10,17,'#d5ac93');line(171,492,187,492,'#efe5cc',3);line(196,499,212,499,'#efe5cc',3);
+  for(let y=431;y<854;y+=54)line(0,y,480,y,'#708b7b1c',1);
+ }else if(level===4){
+  artRect(38,115,401,235,'#b18870',2);for(let i=0;i<5;i++){curtain(37+i*14,117,18,249,i%2?'#a46971':'#bd8183');curtain(369+i*14,117,18,249,i%2?'#a46971':'#bd8183')}
+  artPath([[42,115],[138,149],[239,121],[338,149],[435,115]],'#b6797b');text('今天，只管痛快',240,251,23,'#ead49b',800,'center');
+  line(239,104,239,137,'#b99465',2);artEllipse(239,157,65,16,'#cfb88e');for(let i=0;i<5;i++){const x=187+i*26;line(x,153,x,186,'#b99465',2);candle(x,195)}
+  for(let i=0;i<10;i++){const x=65+i*36,y=176+Math.sin(i*.35)*22;artPath([[x,y],[x+23,y+2],[x+11,y+22]],['#d8bf88','#bf868c','#a8bf9e'][i%3]);line(x,y,x+36,y+2,'#8d7f67',1)}
+  artPath([[67,348],[409,348],[442,399],[36,399]],'#bd987f');artRect(36,399,406,27,'#92715e',1);groundShadow(238,437,196,13);
+  for(let x of [77,383]){artRect(x,314,28,70,'#63555b',3);artEllipse(x+14,355,10,10,'#93858a');artEllipse(x+14,328,5,5,'#a99b97')}
+  for(let x of [128,349]){groundShadow(x,517,75,12);line(x,447,x,505,'#92705a',5);artEllipse(x,505,35,7,'#92705a');artEllipse(x,447,76,24,'#efe5cc');artPath([[x-73,451],[x+73,451],[x+60,483],[x+26,480],[x,491],[x-30,481],[x-66,486]],'#e7d8bf');vaseFlowers(x,429,.6);candle(x-48,442);candle(x+49,442);crockery(x-24,446,12);crockery(x+25,446,12)}
+  artPath([[198,426],[281,426],[348,854],[128,854]],'#b6858f',null);line(198,426,128,854,'#d9bd83',2);line(281,426,348,854,'#d9bd83',2);
+  for(let i=0;i<4;i++){artRect(20+i%2*28,485+Math.floor(i/2)*25,28,24,['#bf8b9a','#a5bfad','#d9bc85'][i%3],2);line(34+i%2*28,486+Math.floor(i/2)*25,34+i%2*28,509+Math.floor(i/2)*25,'#ead8b0',3)}
+  basket(397,483,42,28);jar(407,466,12,25,'#8fa38c');jar(423,461,11,29,'#8fa38c');
+ }else{
+  artWindow(232,126,193,174,true);curtain(219,125,18,184,'#8e7f76');curtain(416,125,18,184,'#8e7f76');booksArt(42,202,140,233,'#9c8467');
+  for(let i=0;i<3;i++){picture(49+i*51,139,44,46);text(['荣誉','卓越','成绩'][i],71+i*51,155,10,'#886e53',700,'center')}
+  artShelf(218,331,205);vaseFlowers(409,316,.52);picture(227,297,24,28);bookStack(275,326,42,4);candle(352,325);
+  c.save();c.translate(203,366);c.scale(.95,.95);chair(0,0,'#8d7c70');c.restore();groundShadow(229,490,40,9);
+  // 大班台保留原物理位置，背景是会客家具与落地收纳。
+  sofaArt(47,434,157,'#a59886');counter(340,387,89,12,86,'#a89173');bookStack(350,381,28,3);plant(419,368,.33);
+  artEllipse(234,683,185,59,'#827e79');artEllipse(234,683,166,47,'#b0a08b');for(let i=0;i<12;i++)line(94+i*24,670,98+i*24,693,'#cfbea22b',1);
+  lamp(429,476);groundShadow(429,606,28,9);artRect(28,592,36,33,'#89786a',4);line(34,591,34,581,'#665749',2);line(34,581,51,581,'#665749',2);line(51,581,51,591,'#665749',2);basket(32,528,35,25);paper(37,519,12,20);
+ }
+ // 柔和纸面颗粒统一所有场景，而不是旧版发光玻璃风格。
+ c.save();c.globalAlpha=.19;grain(0,110,480,610,'#5b4e3819',550);c.restore();
+};
+window.paintRoomScene=(target,level,tables)=>{
+ if(!sceneCache||sceneCache.level!==level){const surface=document.createElement('canvas');surface.width=960;surface.height=1708;const prev=c;c=surface.getContext('2d');c.scale(2,2);sceneArt(level);c=prev;sceneCache={level,surface}}
+ target.drawImage(sceneCache.surface,0,0,480,854);const prev=c;c=target;
+ for(const [i,tb] of tables.entries()){
+  const x=tb.x0,y=tb.y,w=tb.x1-tb.x0;groundShadow(x+w/2,y+(720-y)+5,w*.57,10);
+  if(level===1||level===3){counter(x+3,y,w-6,10,720-y,level===1?'#6cabb1':'#91b6a1',level===1?'#eed7bd':'#e4e4d0');if(i===0)towel(x+24,y+42,29,Math.min(50,708-y-42),'#c18c9d')}
+  else{artRect(x+12,y,10,720-y,'#9c7e60',1);artRect(x+w-22,y,10,720-y,'#9c7e60',1);artPath([[x-6,y-10],[x+7,y-25],[x+w-8,y-25],[x+w+6,y-10]],level===4?'#efe3c9':'#ddc6a1');artRect(x-6,y-10,w+12,12,'#bb9775',2);if(level===4){artPath([[x-5,y+2],[x+w+5,y+2],[x+w-1,y+35],[x+w*.5,y+42],[x+1,y+36]],'#e8dac4');grain(x,y+4,w,29,'#ab95822b',35)}if(level===5){artRect(x+20,y+12,w-40,Math.min(62,704-y),'#a28b71',1);panel(x+26,y+16,w-52,Math.min(51,695-y),'#ab9476')}}
+  if(level===0&&i===0){bookStack(x+w-46,y-19,28,2);artRect(x+23,y-25,25,5,'#81766e',2)}
+  if(level===2){paper(x+w-41,y-23,24,9);if(i===0)tin(x+15,y-34,13,15,'#ceb795')}
+  if(level===5&&i===0){artRect(x+9,y-25,76,10,'#887768',2);paper(x+w-44,y-26,26,10);artRect(x+96,y-23,27,7,'#665d57',2)}
+ }
+ c=prev;
+};
+function drawPlayableArt(ctx,key,type){
+ const prev=c;c=ctx;const pts=type.poly;let xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),x=Math.min(...xs),y=Math.min(...ys),w=Math.max(...xs)-x,h=Math.max(...ys)-y;
+ const fills={cup:'#c8edf0',bottle:'#91baa2',plate:'#fff3da',frame:'#cda16d',mug:'#f5d194',vase:'#e59c8e',tv:'#dec782',bowl:'#e4e9d1',kettle:'#a1d1bd',monitor:'#a0c4c7',papers:'#f8efdc',mirror:'#c8e5e4',champagne:'#d7eff0',trophy:'#ffd166',safe:'#8c9f9f'};
+ artPath(pts,fills[key],'#44343f',2.6);
+ if(key==='plate'){artEllipse(0,0,w*.4,h*.35,'#9abeb8');artEllipse(0,0,w*.28,h*.22,'#fff3da');for(let i=0;i<8;i++){const a=i*Math.PI/4;artEllipse(Math.cos(a)*w*.41,Math.sin(a)*h*.35,2,1,'#d99187',false)}}
+ else if(key==='cup'||key==='mug'){artEllipse(0,y+2,w*.48,3,'#edf8e7');line(x+5,y+7,x+7,y+h-6,'#fffdf0',3);if(key==='cup')line(x+3,y+h*.7,x+w-3,y+h*.7,'#8bbdc2',1);else flower(0,1,5);c.beginPath();c.arc(x+w-1,0,8,-1.5,1.5);c.lineWidth=3;c.strokeStyle='#44343f';c.stroke()}
+ else if(key==='bottle'){artRect(-4,y-2,8,5,'#bc9670',1);artRect(x+3,1,w-6,13,'#f4ebcc',1);flower(0,7,4);line(x+4,3,x+4,y+h-5,'#d8efd6',2)}
+ else if(key==='bowl'){artEllipse(0,y+3,w*.5,4,'#fff4dc');artEllipse(0,y+3,w*.36,2,'#8fafa6');for(let i=0;i<3;i++)flower(-9+i*9,2,3)}
+ else if(key==='vase'){artEllipse(0,y+2,5,2,'#f3d5b3');flower(0,y+h*.58,7);line(x+4,y+h*.45,x+w-4,y+h*.45,'#f9e4c5',2);line(x+4,y+h*.8,x+w-4,y+h*.8,'#f9e4c5',2)}
+ else if(key==='tv'||key==='monitor'){artRect(x+6,y+6,w-18,h-16,'#526975',4);artPath([[x+10,y+h-14],[x+w-18,y+9],[x+w-12,y+9],[x+18,y+h-14]],'#bfd9cc',null);line(-7,y+h,7,y+h,'#44343f',3);if(key==='monitor'){artRect(-5,y+h,10,10,'#719697',1);artRect(-20,y+h+9,40,5,'#a0c4c7',1)}else{line(-12,y,-22,y-12,'#44343f',2);line(12,y,22,y-12,'#44343f',2);artEllipse(x+w-6,y+h-6,2,2,'#d58b76')}}
+ else if(key==='frame'){artRect(x+5,y+5,w-10,h-10,'#b5d8cd',1);artEllipse(x+w*.65,y+h*.35,5,5,'#f6d79b',false);artPath([[x+7,y+h-7],[x+w*.4,y+h*.52],[x+w-7,y+h-7]],'#7da484',null)}
+ else if(key==='papers'){for(let i=0;i<3;i++)line(x+5,y+5+i*5,x+w-5-i*4,y+5+i*5,'#9eaa9c',1.5);line(x+1,y+h-2,x+w-1,y+h-2,'#b3bcad',2)}
+ else if(key==='mirror'){artRect(x-5,y-5,w+10,h+10,'#c49d70',2);const g=c.createLinearGradient(x,y,x+w,y+h);g.addColorStop(0,'#e9f3df');g.addColorStop(.5,'#b9dfdf');g.addColorStop(1,'#daeade');artRect(x+2,y+2,w-4,h-4,g,1);line(x+12,y+25,x+44,y+6,'#fffbea',4);line(x+w-28,y+h-19,x+w-7,y+h-44,'#fffbea',2)}
+ else if(key==='kettle'){artEllipse(0,y+h*.6,w*.42,h*.33,'#a1d1bd');artEllipse(0,y+h*.25,w*.29,4,'#f4e6c5');c.beginPath();c.arc(0,y+h*.25,w*.34,Math.PI,Math.PI*2);c.lineWidth=4;c.strokeStyle='#44343f';c.stroke();flower(0,y+h*.6,5)}
+ else if(key==='champagne'){artRect(-5,y+3,10,8,'#f4d894',1);line(-4,y+2,-4,y+12,'#fff8e6',2);artEllipse(0,y+h-2,8,2,'#c6e3df')}
+ else if(key==='trophy'){c.beginPath();c.arc(x-1,y+h*.25,7,0,Math.PI*1.5);c.arc(x+w+1,y+h*.25,7,-Math.PI/2,Math.PI);c.strokeStyle='#44343f';c.lineWidth=3;c.stroke();star(0,y+h*.32,6);artRect(-14,y+h-7,28,7,'#a57d54',1)}
+ else if(key==='safe'){artRect(x+6,y+6,w-12,h-12,'#aec0b7',2);artEllipse(0,0,9,9,'#dfc48c');line(0,-7,0,7,'#65594c',2);line(-7,0,7,0,'#65594c',2);artRect(x+w-13,-8,4,17,'#62787a',1)}
+ c=prev;
+}
+drawRoom=function(target){target.save();try{window.paintRoomScene(target,G.free?1:G.level,TABLES)}finally{target.restore()}};
+for(const [key,type] of Object.entries(TYPES))type.draw=function(target){target.save();try{drawPlayableArt(target,key,this)}finally{target.restore()}};
+})();
 Save.load();
+if(new URLSearchParams(location.search).get('preview')==='1'){
+  const previewParams=new URLSearchParams(location.search);
+  if(previewParams.get('mode')==='free')startFree();
+  else if(previewParams.get('mode')!=='menu')startLevel(clamp(parseInt(previewParams.get('level')||'1',10)||0,0,LEVELS.length-1));
+}
 
 let last=performance.now();
 function frame(now){
@@ -2090,8 +2350,10 @@ function frame(now){
   if(G.screenT<10) G.screenT+=realDt;       // M5：入场动画时钟
   if(G.resetT>0){ G.resetT-=realDt; if(G.resetT<=0) G.resetArm=false; }   // M5：重置确认倒计时
   if(G.retT>0){ G.retT-=realDt; if(G.retT<=0) G.retArm=false; }           // M6：退出确认倒计时
-  if(G.freezeT>0) G.freezeT-=realDt;        // 顿帧：世界暂停，画面照常渲染
-  else if(G.screen==='play') step(realDt*G.timeScale, realDt);   // 慢动作：物理时间缩放
+  if(!G.paused&&!document.hidden&&!isLandscape()){
+    if(G.freezeT>0) G.freezeT-=realDt;
+    else if(G.screen==='play') step(realDt*G.timeScale, realDt);
+  }
   render(now/1000);
 }
 requestAnimationFrame(frame);
