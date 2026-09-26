@@ -598,6 +598,15 @@ const FREE_ROOM={   // 自由发泄屋：无尽物品刷分（第 3 关后解锁
   deco:[{k:'window',x:24,y:120,w:120,h:180},{k:'shelf',x:140,y:130,items:['plate','bottle','cup']},{k:'clock',x:350,y:130}],
 };
 const FREE_POOL=['cup','cup','bottle','bottle','plate','plate','frame','mug','vase','bowl','kettle','papers','champagne','monitor','trophy','tv','safe'];
+// 将原背景陈设变为真实物品，asset 对应原绘制助手，物理沿用已有材质。
+const SCENE_PROPS=[
+  [{t:'frame',asset:'picture',args:[214,133,92,73],x:260,y:169,w:92,h:73},{t:'frame',asset:'picture',args:[331,149,69,52],x:365,y:175,w:69,h:52},{t:'vase',asset:'vaseFlowers',args:[259,240,.55],x:259,y:231,w:35,h:48},{t:'bottle',asset:'tin',args:[332,231,19,14,'#9bb8aa'],x:342,y:238,w:19,h:20}],
+  [{t:'bottle',asset:'jar',args:[360,289,17,43,'#b18456'],x:369,y:310,w:17,h:47},{t:'bottle',asset:'jar',args:[382,302,15,30,'#9fb6c4'],x:390,y:317,w:15,h:34},{t:'bowl',asset:'tin',args:[326,294,24,39,'#a3b487'],x:338,y:313,w:24,h:43},{t:'plate',asset:'crockery',args:[401,321,15],x:401,y:321,w:30,h:14}],
+  [{t:'vase',asset:'vaseFlowers',args:[394,347,.47],x:394,y:339,w:32,h:43},{t:'bottle',asset:'jar',args:[278,262,14,18,'#a6b8a2'],x:285,y:271,w:14,h:22},{t:'frame',asset:'picture',args:[338,252,23,27],x:350,y:266,w:23,h:27},{t:'bowl',asset:'tin',args:[283,341,20,21,'#d9b688'],x:293,y:351,w:20,h:25}],
+  [{t:'bottle',asset:'jar',args:[249,252,15,28,'#d7bd8f'],x:257,y:266,w:15,h:32},{t:'bottle',asset:'jar',args:[164,326,13,24,'#9da89b'],x:171,y:338,w:13,h:28},{t:'bowl',asset:'tin',args:[158,260,13,21,'#a5bfab'],x:165,y:270,w:13,h:25},{t:'bottle',asset:'jar',args:[397,443,10,21,'#b39eaa'],x:402,y:453,w:10,h:25}],
+  [{t:'vase',asset:'vaseFlowers',args:[128,429,.6],x:128,y:419,w:38,h:53},{t:'vase',asset:'vaseFlowers',args:[349,429,.6],x:349,y:419,w:38,h:53},{t:'bottle',asset:'jar',args:[407,466,12,25,'#8fa38c'],x:413,y:478,w:12,h:29},{t:'bottle',asset:'jar',args:[423,461,11,29,'#8fa38c'],x:429,y:475,w:11,h:33}],
+  [{t:'frame',asset:'picture',args:[227,297,24,28],x:239,y:311,w:24,h:28},{t:'vase',asset:'vaseFlowers',args:[409,316,.52],x:409,y:307,w:35,h:46},{t:'frame',asset:'picture',args:[49,139,44,46],x:71,y:162,w:44,h:46},{t:'frame',asset:'picture',args:[100,139,44,46],x:122,y:162,w:44,h:46}],
+];
 
 /* ================= 存档（localStorage）+ 等级称号 ================= */
 const SAVE_KEY=new URLSearchParams(location.search).get('preview')==='1'?'zmt_preview_throw_v1':'zmt_save_v1';
@@ -834,7 +843,14 @@ function makeItem(d){
     source:'none', crackLines:[] };
 }
 function makeItems(){
-  return (G.free?[]:LEVELS[G.level].items).map(makeItem);
+  if(G.free)return [];
+  const props=SCENE_PROPS[G.level].map(d=>{
+    const it=makeItem({...d,s:'wall'}),base=it.type;
+    it.type={...base,poly:base.poly.map(([x,y])=>[x*d.w/(it.w-(base.pad||2)*2),y*d.h/(it.h-(base.pad||2)*2)])};
+    it.w=d.w+4;it.h=d.h+4;it.r=Math.max(d.w,d.h)/2+2;it.sceneProp=d;
+    return it;
+  });
+  return LEVELS[G.level].items.map(makeItem).concat(props);
 }
 function spawnFree(){  // 发泄屋：随机物品从空中落下（软着陆：不摔碎）
   // 保留保险箱类型，但场内最多一个，避免不可破坏物品堵住刷新。
@@ -861,6 +877,8 @@ const G={
   retArm:false, retT:0,                                // M6：游戏内返回按钮二次确认
   volBar:null, setSfxTgl:null, setVibTgl:null, resetBtn:null, confetti:[],
   paused:false, pauseBtn:null, resumeBtn:null, pauseExitBtn:null,
+  suspendedRun:null, discardBtn:null, discardArm:false,
+  giftPractice:null,
 };
 
 /* ================= M5 UI 改版：设置 / 动效 / 横屏 ================= */
@@ -868,7 +886,7 @@ function setScreen(s){ G.screen=s; G.screenT=0; G.fade=0.24; }   // 切界面带
 function applyAudio(){ if(AU.master) AU.master.gain.value=Save.data.sfx===false?0:(typeof Save.data.vol==='number'?Save.data.vol:0.7); }
 function pauseGame(on){
   if(G.screen!=='play') return;
-  G.paused=on; G.sliderDrag=false; input.samples=[];
+  G.paused=on; G.discardArm=false; G.sliderDrag=false; input.samples=[];
   if(on){
     if(input.held){const it=input.held;it.state='fly';it.vx=0;it.vy=0;it.vang=0;}
     input.active=false;input.held=null;input.id=null;
@@ -932,7 +950,11 @@ cv.addEventListener('pointerdown',e=>{
   const p=toCanvas(e);
   if(G.screen==='play'&&G.paused){
     if(inRect(p,G.resumeBtn)){pauseGame(false);AU.ui();}
-    else if(inRect(p,G.pauseExitBtn)){showLevelSelect();AU.ui();}
+    else if(inRect(p,G.pauseExitBtn)){if(G.giftPractice){showLevelSelect();openScreen('shop')}else suspendRun();AU.ui();}
+    else if(inRect(p,G.discardBtn)){
+      if(G.discardArm){G.suspendedRun=null;showLevelSelect();AU.ui();}
+      else{G.discardArm=true;G.toast='再点一次「放弃本轮」确认';G.toastT=2;}
+    }
     return;
   }
   if(G.screen==='play'&&!G.panel&&inRect(p,G.pauseBtn)){pauseGame(true);return;}
@@ -949,6 +971,7 @@ cv.addEventListener('pointerdown',e=>{
     return;
   }
   if(G.screen==='select'){               // 选关界面：底部导航 + 发泄屋 + 关卡卡片
+    if(G.suspendedRun&&inRect(p,G.continueBtn)){resumeRun();AU.ui();return;}
     const n=G.navBtns.findIndex(r=>inRect(p,r));
     if(n>=0){ AU.ui(); openScreen(['shop','hall','titles','settings'][n]); return; }
     if(inRect(p,G.freeCard)){ AU.ui(); if(freeUnlocked()) startFree(); return; }
@@ -975,8 +998,7 @@ cv.addEventListener('pointerdown',e=>{
     return;
   }
   if(inRect(p,G.backBtn)){             // M6：二次确认，防误触退出丢进度
-    if(G.retArm){ AU.ui(); showLevelSelect(); return; }
-    AU.ui(); G.retArm=true; G.retT=3; return;
+    pauseGame(true);return;
   }
   G.retArm=false;                      // M6：点其他地方取消退出确认
   if(input.active) return;
@@ -1081,13 +1103,14 @@ function smash(it){
   G.shakeAmp=Math.max(G.shakeAmp, Math.min(14,m*2));             // 震屏
   vib(Math.round(clamp(30+m*8,30,80)));
   // 连击
-  G.combo++; G.comboT=COMBO_WINDOW; G.maxCombo=Math.max(G.maxCombo,G.combo);
+  if(!it.giftTrial){G.combo++; G.comboT=COMBO_WINDOW; G.maxCombo=Math.max(G.maxCombo,G.combo);}
   const mult=MULT[Math.min(G.combo,5)];
   const chain=it.source==='chain';
   let pts=Math.round(it.type.score*mult);
   if(chain) pts+=5+Math.round(it.type.score*0.5);
+  if(it.giftTrial)pts=0; // 收藏礼品可无限试玩，但不变成奖励刷分入口
   G.score+=pts;
-  floater('+'+pts, it.x, it.y-it.h/2-6, mult>1||chain, clamp(0.8+it.type.mass*0.15,0.8,1.6));
+  floater(it.giftTrial?'试玩痛快！':'+'+pts, it.x, it.y-it.h/2-6, mult>1||chain, clamp(0.8+it.type.mass*0.15,0.8,1.6));
   if(chain) floater('连锁！', it.x, it.y-it.h/2-34, false, 0.7);
   if(G.combo>=2) AU.combo(G.combo);
   if(G.free){                              // 发泄屋：砸碎直接入账总积分（无结算面板）
@@ -1097,6 +1120,7 @@ function smash(it){
   }
   // 统计与慢动作
   G.smashed++;
+  if(it.giftTrial){G.toast='试玩完成！暂停后返回礼品馆，可再拿一件';G.toastT=4;}
   const now=performance.now();
   G.breakTimes.push(now);
   while(G.breakTimes.length&&now-G.breakTimes[0]>900) G.breakTimes.shift();
@@ -1185,7 +1209,7 @@ function step(dt, realDt){
     G.freeSpawnT-=realDt;
     let alive=0;
     for(const it of G.items) if(it.state!=='gone') alive++;
-    if(alive<9&&G.freeSpawnT<=0){ G.freeSpawnT=rnd(0.8,1.6); spawnFree(); }
+    if(!G.giftPractice&&alive<9&&G.freeSpawnT<=0){ G.freeSpawnT=rnd(0.8,1.6); spawnFree(); }
   }
   // 物品物理
   for(const it of G.items){
@@ -1386,12 +1410,14 @@ function drawShadows(c){
   }
   c.globalAlpha=1;
 }
+let drawSceneProp;
 function drawItem(c,it,scale,isHeld){
   c.save();
   c.translate(it.x,it.y);
   if(scale) c.scale(scale,scale);
   c.rotate(it.ang);
-  it.type.draw(c);
+  if(it.giftTrial){c.save();c.scale(.65,.65);GIFTS.find(g=>g.id===it.giftTrial).draw(c);c.restore();}
+  else if(it.sceneProp)drawSceneProp(c,it.sceneProp);else it.type.draw(c);
   for(const line of it.crackLines){      // 裂纹叠加
     c.beginPath();
     c.moveTo(line[0][0],line[0][1]);
@@ -1469,7 +1495,7 @@ function drawHUD(c,t){   // M7：霓虹 HUD（金色奖励 / 珊瑚连击 / 进�
   c.textAlign='center'; c.textBaseline='middle'; c.fillText(G.retArm?'✕':'‹',30,26);
   c.textAlign='left'; c.textBaseline='top';
   c.fillStyle=G.retArm?UI.coral:'rgba(255,255,255,0.85)'; c.font='600 14px "PingFang SC",sans-serif';
-  c.fillText(G.retArm?'再点一次退出本关':(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name),56,11);
+  c.fillText(G.retArm?'再点一次退出本关':(G.giftPractice?'🎁 礼品试玩':G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name),56,11);
   G.scoreShow+=(G.score-G.scoreShow)*Math.min(1,G.lastRealDt*10);
   c.font='800 28px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText(Math.round(G.scoreShow)+'',56,32);
@@ -1529,7 +1555,7 @@ function drawHint(c){
   c.font='700 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText('👆 按住 → 用力划动 → 松手甩出去', W/2, y);
   c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.75)';
-  c.fillText(G.free?'物品会不断从天上掉下来 · 砸碎直接入账！':'砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
+  c.fillText(G.giftPractice?'礼品试玩不计分 · 暂停后可返回礼品馆':G.free?'物品会不断从天上掉下来 · 砸碎直接入账！':'砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
   if(!input.active&&G.hintT>4){
     const progress=(performance.now()%1200)/1200,x=160+progress*160;
     c.strokeStyle=UI.gold;c.lineWidth=2;c.beginPath();c.moveTo(160,y+43);c.lineTo(320,y+43);c.lineTo(313,y+37);c.moveTo(320,y+43);c.lineTo(313,y+49);c.stroke();
@@ -1645,6 +1671,10 @@ function render(t){
     if(!G.panel){c.fillStyle='rgba(43,36,64,.9)';c.beginPath();roundRect(c,422,108,44,44,10);c.fill();c.fillStyle=UI.gold;c.textAlign='center';c.textBaseline='middle';c.font='700 13px sans-serif';c.fillText('暂停',444,130);}
     if(G.paused) drawPause(c);
   }
+  G.continueBtn=null;
+  if(G.screen==='select'&&G.suspendedRun){
+    G.continueBtn={x:192,y:99,w:264,h:44};drawBtn(c,G.continueBtn,'继续上次 · '+(G.suspendedRun.free?'自由屋':LEVELS[G.suspendedRun.level].name),true);
+  }
   if(G.fade>0){                              // M5：界面切换淡入遮罩
     c.fillStyle='rgba(10,8,20,'+Math.min(1,G.fade/0.24)*0.92+')';
     c.fillRect(0,0,W,H);
@@ -1656,9 +1686,10 @@ function drawPause(c){
   c.textAlign='center';c.textBaseline='middle';c.fillStyle=UI.gold;c.font='800 28px sans-serif';c.fillText('歇一下，再砸个痛快',240,300);
   c.fillStyle=UI.sub;c.font='600 13px sans-serif';c.fillText('物品、连击与刷新已暂停',240,342);
   G.resumeBtn={x:100,y:390,w:280,h:56};G.pauseExitBtn={x:100,y:462,w:280,h:56};
-  drawBtn(c,G.resumeBtn,'继续砸',true);drawBtn(c,G.pauseExitBtn,'返回选关',false);
+  G.discardBtn={x:100,y:534,w:280,h:44};
+  drawBtn(c,G.resumeBtn,'继续砸',true);drawBtn(c,G.pauseExitBtn,G.giftPractice?'返回礼品馆':'保留现场，返回选关',false);drawBtn(c,G.discardBtn,G.discardArm?'确认放弃本轮':'放弃本轮',false);
   c.fillStyle=UI.sub;c.font='600 12px sans-serif';c.textAlign='center';
-  c.fillText(G.free?'发泄屋积分已逐件保存':G.panelCount>0?'通关后新增收益返回时保存':'尚未通关，返回不保存本轮积分',240,548);
+  c.fillText(G.giftPractice?'礼品仅试玩，不消耗收藏、不计分':'保留现场仅限当前页面，刷新会丢失现场',240,602);
 }
 function drawBG(c){   // M7：深紫夜场 + 霓虹光锥 + 极轻网格
   const g=c.createLinearGradient(0,0,0,H);
@@ -1864,7 +1895,7 @@ function drawShop(c,t){   // M5：礼品馆（12 件礼品，错落入场 + 珊�
     c.textBaseline='middle';
     if(owned){
       c.fillStyle=UI.green; c.font='800 14px "PingFang SC",sans-serif'; c.textAlign='right';
-      c.fillText('✓ 已领取', r.x+cw-12, r.y+ch-21);
+      c.fillText('✓ 已领取 · 点此试玩', r.x+cw-12, r.y+ch-21);
     }else if(afford){
       const bx=r.x+cw-66, by=r.y+ch-38, bw2=54, bh2=26;
       const gg=c.createLinearGradient(0,by,0,by+bh2);
@@ -2099,12 +2130,14 @@ function drawRotate(c,t){   // M5：横屏提示遮罩（旋转手机动画）
   c.fillText('把手机竖起来，砸得更爽', W/2, H/2+44);
 }
 function startLevel(n){
+  if(G.suspendedRun&&!G.suspendedRun.free&&G.suspendedRun.level===n){resumeRun();return;}
   if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
   G.panelCount=0; // 旧关收益已保存，避免 resetLevel 按新关索引再次结算
   G.level=n; G.free=false; G.screen='play'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
   resetLevel();
 }
 function startFree(){  // 自由发泄屋：无尽刷分模式（第 3 关后解锁）
+  if(G.suspendedRun&&G.suspendedRun.free){resumeRun();return;}
   if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
   G.panelCount=0;
   G.level=LEVELS.length; G.free=true; G.screen='play'; G.screenT=0; G.fade=0.24;
@@ -2112,10 +2145,32 @@ function startFree(){  // 自由发泄屋：无尽刷分模式（第 3 关后解
   for(let i=0;i<8;i++) spawnFree();   // 开场一波物品雨
 }
 function freeUnlocked(){ return Save.data.stars[2]>=1; }   // 通关第 3 关（1 星即可）解锁
+function suspendRun(){
+  pauseGame(true);
+  if(!G.free&&G.panelCount>0)bankScore();
+  const snapshot={...G,suspendedRun:null};
+  showLevelSelect();G.suspendedRun=snapshot;
+}
+function resumeRun(){
+  const snapshot=G.suspendedRun;if(!snapshot)return;
+  Object.assign(G,snapshot);G.suspendedRun=null;G.screen='play';G.discardArm=false;pauseGame(false);
+}
+function startGiftTrial(g){
+  // 礼品试用不依赖自由屋解锁，不消费收藏；保留已有本轮现场。
+  if(G.suspendedRun?.free){G.toast='请先继续或放弃已保留的自由屋现场';G.toastT=3;return;}
+  startFree();
+  const base={safe:'safe',vault:'safe',trophy:'trophy',hammer:'trophy',glass:'mirror',lamp:'mirror',chair:'papers',banner:'papers',champagne:'champagne'}[g.id]||'vase';
+  const it=makeItem({t:base,x:240,s:'floor'});
+  if(it.type.unbreakable)G.items=G.items.filter(i=>!i.type.unbreakable);
+  it.type={...it.type,score:0,hp:1,poly:[[-30,-40],[30,-40],[30,30],[-30,30]]};
+  it.w=64;it.h=74;it.r=42;it.hp=1;it.giftTrial=g.id;it.y=GROUND-37;
+  G.items=[it];G.giftPractice=g.id;G.toast=g.name+' · 拿起甩砸，收藏不消耗';G.toastT=3;
+}
 function openScreen(s){ setScreen(s); }   // 选关 → 礼品馆/荣誉室/称号/设置
 function tryRedeem(i){                  // 兑换礼品：积分达标即可领取（不扣分），赠称号徽章
   const g=GIFTS[i];
-  if(Save.hasGift(g.id)||Save.data.score<g.price){ AU.ui(); return; }
+  if(Save.hasGift(g.id)){startGiftTrial(g);return;}
+  if(Save.data.score<g.price){ AU.ui(); return; }
   Save.data.gifts.push(g.id); if(!Save.save()) return;
   AU.redeem();
   G.toast='🎁 已领取「'+g.name+'」 获得称号 '+g.title; G.toastT=3.2;
@@ -2125,6 +2180,7 @@ function showLevelSelect(){
   if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore(); // 通关后继续砸的新增收益退出也保留
   G.screen='select'; G.screenT=0; G.fade=0.24;   // M5：切屏淡入
   G.panel=false; G.free=false;
+  G.giftPractice=null;
   G.paused=false; G.pauseBtn=null;applyAudio();
   input.active=false; input.held=null;
   G.items=[]; G.fragments=[]; G.dust=[]; G.floaters=[];
@@ -2134,6 +2190,8 @@ function resetLevel(){
   if(G.screen==='play'&&!G.free&&G.panelCount>0) bankScore();
   G.items=makeItems();
   G.paused=false;G.pauseBtn=null;applyAudio();
+  G.discardArm=false;
+  G.giftPractice=null;
   G.fragments=[]; G.dust=[]; G.floaters=[];
   G.score=0; G.scoreShow=0; G.combo=0; G.comboT=0; G.maxCombo=0;
   G.smashed=0;
@@ -2299,7 +2357,7 @@ sceneArt=function(level){
  c.save();c.globalAlpha=.19;grain(0,110,480,610,'#5b4e3819',550);c.restore();
 };
 window.paintRoomScene=(target,level,tables)=>{
- if(!sceneCache||sceneCache.level!==level){const surface=document.createElement('canvas');surface.width=960;surface.height=1708;const prev=c;c=surface.getContext('2d');c.scale(2,2);sceneArt(level);c=prev;sceneCache={level,surface}}
+ if(!sceneCache||sceneCache.level!==level||sceneCache.free!==G.free){const surface=document.createElement('canvas');surface.width=960;surface.height=1708;const prev=c;c=surface.getContext('2d');c.scale(2,2);sceneArt(level);c=prev;sceneCache={level,surface,free:G.free}}
  target.drawImage(sceneCache.surface,0,0,480,854);const prev=c;c=target;
  for(const [i,tb] of tables.entries()){
   const x=tb.x0,y=tb.y,w=tb.x1-tb.x0;groundShadow(x+w/2,y+(720-y)+5,w*.57,10);
@@ -2330,6 +2388,14 @@ function drawPlayableArt(ctx,key,type){
  else if(key==='safe'){artRect(x+6,y+6,w-12,h-12,'#aec0b7',2);artEllipse(0,0,9,9,'#dfc48c');line(0,-7,0,7,'#65594c',2);line(-7,0,7,0,'#65594c',2);artRect(x+w-13,-8,4,17,'#62787a',1)}
  c=prev;
 }
+const sceneAssets={picture,vaseFlowers,jar,tin,crockery};
+function skipSceneAsset(name,args){return !G.free&&SCENE_PROPS[G.level]?.some(d=>d.asset===name&&d.args[0]===args[0]&&d.args[1]===args[1]);}
+picture=(...a)=>{if(!skipSceneAsset('picture',a))sceneAssets.picture(...a)};
+vaseFlowers=(...a)=>{if(!skipSceneAsset('vaseFlowers',a))sceneAssets.vaseFlowers(...a)};
+jar=(...a)=>{if(!skipSceneAsset('jar',a))sceneAssets.jar(...a)};
+tin=(...a)=>{if(!skipSceneAsset('tin',a))sceneAssets.tin(...a)};
+crockery=(...a)=>{if(!skipSceneAsset('crockery',a))sceneAssets.crockery(...a)};
+drawSceneProp=function(target,d){const prev=c;c=target;target.save();target.translate(-d.x,-d.y);try{sceneAssets[d.asset](...d.args)}finally{target.restore();c=prev}};
 drawRoom=function(target){target.save();try{window.paintRoomScene(target,G.free?1:G.level,TABLES)}finally{target.restore()}};
 for(const [key,type] of Object.entries(TYPES))type.draw=function(target){target.save();try{drawPlayableArt(target,key,this)}finally{target.restore()}};
 })();

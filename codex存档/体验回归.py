@@ -44,13 +44,19 @@ async def main():
             await page.wait_for_timeout(350)
             await page.locator('canvas').screenshot(path=f'/tmp/zm_unified_room_{i}.png')
         print('PASS 六场景绘制无异常')
+        await check('每关增加4件独立真实陈设', '''()=>{G.suspendedRun=null;for(let i=0;i<6;i++){startLevel(i);if(G.items.length!==LEVELS[i].items.length+4||G.items.filter(it=>it.sceneProp).length!==4)return false}return true}''')
+        await check('返回保留完整现场', '''()=>{startLevel(0);smash(G.items[0]);const items=G.items,score=G.score;suspendRun();const held=G.suspendedRun;resumeRun();return held.items===items&&G.items===items&&G.score===score&&!G.paused&&G.items[0].state==='gone'}''')
+        await check('未通关现场不提前入账', '''()=>{startLevel(0);const saved=Save.data.score;smash(G.items[0]);suspendRun();const good=Save.data.score===saved;resumeRun();return good}''')
+        await check('礼品试玩不消耗收藏且不给奖励', '''()=>{G.suspendedRun=null;Save.data.gifts=['duck'];startGiftTrial(GIFTS[0]);const it=G.items.find(i=>i.giftTrial);const saved=Save.data.score;it.source='chain';smash(it);return Save.data.score===saved&&Save.hasGift('duck')&&G.combo===0}''')
+        await check('试玩期间保留原关卡现场', '''()=>{G.suspendedRun=null;startLevel(0);const items=G.items;suspendRun();startGiftTrial(GIFTS[0]);showLevelSelect();resumeRun();return G.level===0&&!G.free&&G.items===items}''')
+        await check('礼品房隔离补货与解锁', '''()=>{G.suspendedRun=null;Save.data.stars[2]=0;startGiftTrial(GIFTS[0]);G.freeSpawnT=-1;for(let i=0;i<60;i++)step(1/60,1/60);return G.giftPractice==='duck'&&G.items.length===1&&!freeUnlocked()}''')
         await page.goto((Path(__file__).resolve().parents[1] / '视觉预览.html').as_uri())
         await page.wait_for_timeout(600)
         child = page.frames[1]
         assert await child.evaluate("SAVE_KEY==='zmt_preview_throw_v1'&&G.level===1"), '预览加载统一版并隔离存档'
         print('PASS 预览统一版本与存档隔离')
         assert not errors, errors
-        print('17/17 体验回归通过；无页面脚本异常')
+        print('23/23 体验回归通过；无页面脚本异常')
         await browser.close()
 
 asyncio.run(main())

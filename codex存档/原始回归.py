@@ -130,7 +130,7 @@ async def main():
 
         # ---- 7. 第 4 关 浴室（含 M5 三星彩带） ----
         await JS(page,'startLevel(3)')
-        ok('浴室 10 件物品', await JS(page,'G.items.length')==10)
+        ok('浴室 14 件物品（新增4件真实陈设）', await JS(page,'G.items.length')==14)
         ok('浴室含大镜子', await JS(page,"G.items.some(i=>i.type.name==='大镜子')"))
         # 镜子碎裂 → dingcluster 音效 + 碎片加速（hard 标记）
         await JS(page,"window.__dc=0;const od=AU.dingcluster.bind(AU);AU.dingcluster=()=>{window.__dc++;od();}")
@@ -150,7 +150,7 @@ async def main():
         # ---- 8. 第 5 关 宴会厅：香槟塔坍塌 ----
         await JS(page,'startLevel(4)')
         nChamp=await JS(page,"G.items.filter(i=>i.type.name==='香槟杯').length")
-        ok('宴会厅 16 件物品（10 香槟杯）', await JS(page,'G.items.length')==16 and nChamp==10, f'{nChamp} 杯')
+        ok('宴会厅 20 件物品（保留10香槟杯）', await JS(page,'G.items.length')==20 and nChamp==10, f'{nChamp} 杯')
         rest0=await JS(page,"G.items.filter(i=>i.state==='rest').length")
         # 模拟抽出底层杯子：上层失去支撑全部转 fly
         await JS(page,"(()=>{const it=G.items.find(i=>i.type.name==='香槟杯'&&Math.abs(i.x-113)<2&&Math.abs((i.y+17)-600)<2);it.state='gone';for(const jt of G.items){if(jt!==it&&jt.state==='rest'&&jt.y<it.y-4&&Math.abs(jt.x-it.x)<it.r+jt.r){jt.state='fly';jt.vx=30;jt.vy=0;jt.vang=1;}}})()")
@@ -160,7 +160,7 @@ async def main():
         # ---- 9. 第 6 关 老板办公室：保险箱 ----
         await JS(page,'startLevel(5)')
         safeN=await JS(page,"G.items.filter(i=>i.type.name==='保险箱').length")
-        ok('老板办公室 11 件物品（含保险箱）', await JS(page,'G.items.length')==11 and safeN==1)
+        ok('老板办公室 15 件物品（含保险箱）', await JS(page,'G.items.length')==15 and safeN==1)
         ok('通关目标不含保险箱', await JS(page,"G.total===G.items.filter(i=>!i.type.unbreakable).length"), str(await JS(page,'`${G.total}/${G.items.length}`')))
         await JS(page,"(()=>{const s=G.items.find(i=>i.type.name==='保险箱');s.state='rest';takeDamage(s,'throw')})()")
         ok('保险箱被砸不碎（未 gone）', (await JS(page,"G.items.find(i=>i.type.name==='保险箱').state"))!='gone')
@@ -202,13 +202,13 @@ async def main():
         await JS(page,'startLevel(0)'); await page.wait_for_timeout(300)
         sx,sy=css(page,31,31)
         await page.mouse.click(sx,sy); await page.wait_for_timeout(150)
-        ok('M6 第一次点返回 → 确认态不退出', await JS(page,"G.screen==='play'&&G.retArm===true"))
-        await page.mouse.click(sx,sy); await page.wait_for_timeout(150)
-        ok('M6 第二次点返回 → 退出到选关', await JS(page,"G.screen==='select'"))
+        ok('返回先暂停，不直接退出', await JS(page,"G.screen==='play'&&G.paused===true"))
+        await page.mouse.click(*css(page,240,490)); await page.wait_for_timeout(150)
+        ok('选择返回选关 → 保留现场', await JS(page,"G.screen==='select'&&!!G.suspendedRun"))
         await JS(page,'startLevel(0)'); await page.wait_for_timeout(200)
         await page.mouse.click(*css(page,31,31)); await page.wait_for_timeout(150)
         await page.mouse.click(*css(page,240,400)); await page.wait_for_timeout(150)
-        ok('M6 点其他处 → 取消退出确认', await JS(page,"G.retArm===false&&G.screen==='play'"))
+        ok('点继续 → 原现场恢复', await JS(page,"!G.paused&&G.screen==='play'&&!G.suspendedRun"))
         await JS(page,'G.retArm=true;G.retT=0.02'); await page.wait_for_timeout(200)
         ok('M6 确认超时自动复位', await JS(page,'G.retArm')==False)
         await JS(page,'showLevelSelect()')
