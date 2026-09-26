@@ -134,6 +134,11 @@ const AU={
       const now=this.t();
       this.burst(0.25,'bandpass',900,300,0.16,now,1.5);
       for(let i=0;i<4;i++) this.burst(0.05,'highpass',rnd(1800,3200),0,0.06,now+rnd(0,0.12));
+    }else if(mat==='metal'){ // 金属：非谐泛音"哐"（奖杯碎裂）
+      const now=this.t();
+      [520,780,1160,1530].forEach(f=>this.tone('sawtooth',f*rnd(0.92,1.06),f*0.98,rnd(0.12,0.2),rnd(0.07,0.11),now+rnd(0,0.02)));
+      this.tone('square',180,140,0.12,0.15,now);
+      this.burst(0.08,'highpass',2500,0,0.08,now);
     }else{ // 电子：玻璃+塑料混合
       const now=this.t();
       for(let i=0;i<5;i++){
@@ -176,6 +181,22 @@ const AU={
     [392,523,659,784].forEach((f,i)=>this.tone('triangle',f,0,0.12,0.11,now+i*0.07));
     this.tone('sine',1568,0,0.35,0.09,now+0.32);
     this.tone('sine',2093,0,0.45,0.07,now+0.46);
+  },
+  dingcluster(){ // 大镜子碎裂：玻璃"叮当"群 + 长余韵（M4）
+    if(!this.ctx) return;
+    const now=this.t();
+    for(let i=0;i<9;i++){
+      const f=rnd(1800,6500), w=now+rnd(0,0.09);
+      this.tone('sine',f,f*rnd(0.55,0.75),rnd(0.08,0.16),rnd(0.05,0.1),w);
+    }
+    this.burst(0.3,'highpass',2600,0,0.1,now);
+    this.burst(0.4,'bandpass',rnd(1200,2000),rnd(500,900),0.06,now+0.05,2);
+  },
+  metalClang(k){ // 保险箱金属撞击：短促"哐"（M4）
+    if(!this.ctx) return;
+    const now=this.t();
+    [420,640,900].forEach((f,i)=>this.tone('triangle',f*rnd(0.92,1.08),f*0.96,rnd(0.08,0.14),0.1*(k||1),now+i*0.006));
+    this.burst(0.05,'bandpass',rnd(1800,2800),0,0.08*(k||1),now,2);
   },
 };
 
@@ -352,6 +373,79 @@ const TYPES={
       c.strokeStyle='rgba(0,0,0,0.25)'; c.lineWidth=1.2; c.strokeRect(-20,-10,40,20);
     },
   },
+  /* —— M4 新物品 —— */
+  mirror:{  // 大镜子：玻璃 1 击，碎裂带"叮当"群 + 碎片反射连锁
+    name:'大镜子', mat:'glass', hp:1, score:80, mass:3, thresh:170, pad:4, reflect:true,
+    color:'#a8d8ec', color2:'#7fb8d4', edge:'#6b4a2b',
+    poly:[[-52,-80],[52,-80],[52,80],[-52,80]],
+    draw(c){
+      c.fillStyle='#8a5c31'; c.fillRect(-60,-88,120,176);           // 木框
+      c.strokeStyle='#5f3f22'; c.lineWidth=3; c.strokeRect(-60,-88,120,176);
+      c.fillStyle='#a5713f'; c.fillRect(-54,-82,108,164);           // 内框
+      const g=c.createLinearGradient(-52,0,52,0);                   // 镜面渐变
+      g.addColorStop(0,'#cfeaf7'); g.addColorStop(0.5,'#eef8fd'); g.addColorStop(1,'#b9dff0');
+      c.fillStyle=g; c.fillRect(-52,-80,104,160);
+      c.strokeStyle='rgba(255,255,255,0.85)'; c.lineWidth=6;        // 镜面高光斜条
+      c.beginPath(); c.moveTo(-38,-64); c.lineTo(-8,-80); c.stroke();
+      c.beginPath(); c.moveTo(-42,-52); c.lineTo(-24,-80); c.stroke();
+      c.lineWidth=3;
+      c.beginPath(); c.moveTo(30,-66); c.lineTo(44,-80); c.stroke();
+    },
+  },
+  champagne:{  // 香槟杯：玻璃 1 击，宴会厅杯塔
+    name:'香槟杯', mat:'glass', hp:1, score:25, mass:0.5, thresh:160, pad:2,
+    color:'#e0f2fa', color2:'#ffd166', edge:'#9db8c8',
+    poly:[[-8,-16],[8,-16],[5,-2],[2.5,14],[9,14],[9,17],[-9,17],[-9,14],[-2.5,14],[-5,-2]],
+    draw(c){
+      polyPath(c,this.poly); c.fillStyle=this.color; c.fill();      // 杯身+杯脚
+      c.lineWidth=2.5; c.strokeStyle=this.edge; c.stroke();
+      c.fillStyle='#ffd166'; c.fillRect(-6,-14,12,10);              // 香槟酒液
+      c.fillStyle='#fff3c4'; c.fillRect(-6,-14,12,3);
+      c.beginPath(); c.arc(-2,-6,1.2,0,Math.PI*2); c.arc(2,-4,1.2,0,Math.PI*2); c.fill();  // 气泡
+      c.strokeStyle='rgba(255,255,255,0.7)'; c.lineWidth=2;
+      c.beginPath(); c.moveTo(-5,-12); c.lineTo(-5,0); c.stroke();  // 高光
+      c.beginPath(); c.ellipse(0,17,9,2.2,0,0,Math.PI*2);           // 底座加粗
+      c.fillStyle='#cfe4ee'; c.fill();
+      c.strokeStyle=this.edge; c.lineWidth=2.5; c.stroke();
+    },
+  },
+  trophy:{  // 奖杯：金属 2 耐久高分手办
+    name:'奖杯', mat:'metal', hp:2, score:150, mass:2, thresh:380, pad:3,
+    color:'#f5c542', color2:'#c9971f', edge:'#8a641f',
+    poly:[[-16,-26],[16,-26],[11,2],[2.5,9],[10,9],[16,20],[-16,20],[-10,9],[-2.5,9],[-11,2]],
+    draw(c){
+      polyPath(c,this.poly); c.fillStyle=this.color; c.fill();
+      c.lineWidth=3; c.strokeStyle=this.edge; c.stroke();
+      c.lineWidth=4;                                                  // 双耳把手
+      c.beginPath(); c.arc(-16,-10,9,-Math.PI/2,Math.PI/2); c.stroke();
+      c.beginPath(); c.arc(16,-10,9,Math.PI/2,-Math.PI/2); c.stroke();
+      c.strokeStyle='#fff3c4'; c.lineWidth=2.5;                       // 高光
+      c.beginPath(); c.moveTo(-10,-20); c.lineTo(-7,-2); c.stroke();
+      c.fillStyle='#fff3c4'; c.font='14px sans-serif'; c.textAlign='center'; c.textBaseline='middle';
+      c.fillText('★',0,-12);                                          // 刻星
+      c.fillStyle=this.color2; c.fillRect(-10,12,20,5);               // 底座分节
+      c.strokeStyle=this.edge; c.lineWidth=2; c.strokeRect(-10,12,20,5);
+    },
+  },
+  safe:{  // 金属保险箱：砸不碎，弹飞当工具撞碎别的物品（不计分）
+    name:'保险箱', mat:'metal', hp:999, score:0, mass:6, thresh:1e9, pad:4, unbreakable:true,
+    color:'#5a6672', color2:'#3f4a54', edge:'#333d47',
+    poly:[[-34,-30],[34,-30],[34,30],[-34,30]],
+    draw(c){
+      polyPath(c,this.poly); c.fillStyle=this.color; c.fill();
+      c.lineWidth=3; c.strokeStyle=this.edge; c.stroke();
+      c.fillStyle=this.color2; c.fillRect(-34,-30,34,60);             // 明暗面
+      c.strokeStyle=this.edge; c.lineWidth=2; c.strokeRect(-24,-20,48,40);   // 门缝
+      c.fillStyle='#d8a13c'; c.strokeStyle='#8a641f'; c.lineWidth=1.5;
+      c.beginPath(); c.arc(0,0,9,0,Math.PI*2); c.fill(); c.stroke();  // 转盘
+      c.fillStyle='#5a6672'; c.beginPath(); c.arc(0,0,3.5,0,Math.PI*2); c.fill();
+      c.beginPath(); c.moveTo(0,-7); c.lineTo(0,-1); c.stroke();
+      c.strokeStyle='#9aa4ae'; c.lineWidth=3;                          // 把手
+      c.beginPath(); c.arc(0,10,6,Math.PI,0); c.stroke();
+      c.strokeStyle='rgba(255,255,255,0.25)'; c.lineWidth=2;           // 高光
+      c.beginPath(); c.moveTo(-28,-24); c.lineTo(-28,24); c.stroke();
+    },
+  },
 };
 
 /* ================= 关卡数据（数据驱动，加关只加数据） ================= */
@@ -409,7 +503,72 @@ const LEVELS=[
       {t:'papers', x:430,s:'floor'},
     ],
   },
+  /* —— M4 新关卡 —— */
+  {
+    name:'浴室', desc:'大镜子反射连锁 · 瓶瓶罐罐',
+    theme:{wallTop:'#e8f4f8',wallBot:'#d0e8ef',floor:'#9fc3d1',base:'#7fa8b8',wood:'#dbeef2',rug:'#8fc9dd'},
+    deco:[{k:'window',x:24,y:120,w:110,h:160},{k:'tub',x:300,y:600},{k:'clock',x:360,y:130}],
+    items:[
+      {t:'mirror', x:210,s:'wall', y:230},      // 大镜子：玻璃 1 击 + 叮当群 + 碎片反射
+      {t:'cup',    x:95, s:'table1'},
+      {t:'bottle', x:150,s:'table1'},
+      {t:'bottle', x:200,s:'table1'},
+      {t:'kettle', x:380,s:'table2'},
+      {t:'cup',    x:440,s:'table2'},
+      {t:'bottle', x:60, s:'floor'},
+      {t:'vase',   x:250,s:'floor'},
+      {t:'bottle', x:470,s:'floor'},
+      {t:'cup',    x:300,s:'floor'},
+    ],
+  },
+  {
+    name:'宴会厅', desc:'香槟杯塔 · 一碰全倒',
+    theme:{wallTop:'#f6e7d2',wallBot:'#e8d3b8',floor:'#b98a68',base:'#a0734f',wood:'#eedcc4',rug:'#c0392b'},
+    deco:[{k:'window',x:24,y:120,w:110,h:160},{k:'painting',x:390,y:150}],
+    items:[
+      {t:'champagne',x:113,s:'table1'},         // 香槟杯塔：4-3-2-1 金字塔
+      {t:'champagne',x:141,s:'table1'},
+      {t:'champagne',x:169,s:'table1'},
+      {t:'champagne',x:197,s:'table1'},
+      {t:'champagne',x:127,s:'table1',yoff:-11},
+      {t:'champagne',x:155,s:'table1',yoff:-11},
+      {t:'champagne',x:183,s:'table1',yoff:-11},
+      {t:'champagne',x:141,s:'table1',yoff:-22},
+      {t:'champagne',x:169,s:'table1',yoff:-22},
+      {t:'champagne',x:155,s:'table1',yoff:-33},
+      {t:'plate',  x:350,s:'table2'},
+      {t:'plate',  x:395,s:'table2'},
+      {t:'bottle', x:440,s:'table2'},
+      {t:'bottle', x:70, s:'floor'},
+      {t:'bottle', x:460,s:'floor'},
+      {t:'bottle', x:300,s:'floor'},
+    ],
+  },
+  {
+    name:'老板办公室', desc:'3 耐久电视 · 保险箱当工具（BOSS 关）',
+    theme:{wallTop:'#3a3f4a',wallBot:'#2c313b',floor:'#7a6a58',base:'#5f5245',wood:'#4a4238',rug:'#8a2f2b'},
+    deco:[{k:'board',x:60,y:140},{k:'clock',x:350,y:130},{k:'window',x:24,y:150,w:110,h:160}],
+    items:[
+      {t:'tv',     x:395,s:'table2'},           // 电视 3 耐久
+      {t:'trophy', x:438,s:'table2'},           // 奖杯：金属 2 耐久
+      {t:'monitor',x:100,s:'table1'},
+      {t:'mug',    x:165,s:'table1'},
+      {t:'papers', x:225,s:'table1'},
+      {t:'safe',   x:420,s:'floor'},            // 保险箱：砸不碎，当工具撞别的
+      {t:'frame',  x:210,s:'wall', y:300},
+      {t:'frame',  x:312,s:'wall', y:330},
+      {t:'vase',   x:70, s:'floor'},
+      {t:'mug',    x:240,s:'floor'},
+      {t:'bottle', x:300,s:'floor'},
+    ],
+  },
 ];
+const FREE_ROOM={   // 自由发泄屋：无尽物品刷分（第 3 关后解锁）
+  name:'自由发泄屋', desc:'无尽物品 · 无目标 · 纯刷分',
+  theme:{wallTop:'#5a5a78',wallBot:'#3f3f58',floor:'#8a6f4d',base:'#6e5638',wood:'#4a4a63',rug:'#c0392b'},
+  deco:[{k:'window',x:24,y:120,w:120,h:180},{k:'shelf',x:140,y:130,items:['plate','bottle','cup']},{k:'clock',x:350,y:130}],
+};
+const FREE_POOL=['cup','cup','bottle','bottle','plate','plate','frame','mug','vase','bowl','kettle','papers','champagne','monitor','trophy','tv','safe'];
 
 /* ================= 存档（localStorage）+ 等级称号 ================= */
 const SAVE_KEY='zmt_save_v1';
@@ -628,20 +787,27 @@ const GIFTS=[
   }},
 ];
 
+function makeItem(d){
+  const t=TYPES[d.t];
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  t.poly.forEach(q=>{ if(q[0]<minX)minX=q[0]; if(q[0]>maxX)maxX=q[0]; if(q[1]<minY)minY=q[1]; if(q[1]>maxY)maxY=q[1]; });
+  const w=maxX-minX, h=maxY-minY, pad=t.pad||2;
+  let y;
+  if(d.s==='floor') y=GROUND-h/2;
+  else if(d.s==='wall'||d.s==='drop') y=d.y;   // wall：挂墙上固定 y；drop：发泄屋空中出生
+  else { const tb=TABLES[d.s==='table1'?0:1]; y=tb.y-h/2+(d.yoff||0); }
+  return { t:d.t, type:t, x:d.x, y, state:'rest', vx:0, vy:0, ang:0, vang:0,
+    hp:t.hp, cracks:0, w:w+pad*2, h:h+pad*2, r:Math.max(w,h)/2+pad,
+    source:'none', crackLines:[] };
+}
 function makeItems(){
-  return LEVELS[G.level].items.map(d=>{
-    const t=TYPES[d.t];
-    let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
-    t.poly.forEach(q=>{ if(q[0]<minX)minX=q[0]; if(q[0]>maxX)maxX=q[0]; if(q[1]<minY)minY=q[1]; if(q[1]>maxY)maxY=q[1]; });
-    const w=maxX-minX, h=maxY-minY, pad=t.pad||2;
-    let y;
-    if(d.s==='floor') y=GROUND-h/2;
-    else if(d.s==='wall') y=d.y;
-    else { const tb=TABLES[d.s==='table1'?0:1]; y=tb.y-h/2+(d.yoff||0); }
-    return { t:d.t, type:t, x:d.x, y, state:'rest', vx:0, vy:0, ang:0, vang:0,
-      hp:t.hp, cracks:0, w:w+pad*2, h:h+pad*2, r:Math.max(w,h)/2+pad,
-      source:'none', crackLines:[] };
-  });
+  return (G.free?[]:LEVELS[G.level].items).map(makeItem);
+}
+function spawnFree(){  // 发泄屋：随机物品从空中落下（软着陆：不摔碎）
+  const t=FREE_POOL[(Math.random()*FREE_POOL.length)|0];
+  const it=makeItem({t, x:rnd(60,W-60), s:'drop', y:-60});
+  it.state='fly'; it.vy=0; it.vang=rnd(-3,3); it.soft=true;
+  G.items.push(it);
 }
 
 /* ================= 游戏状态 ================= */
@@ -654,6 +820,7 @@ const G={
   debugAudio: location.search.indexOf('debug')>=0,   // 加 ?debug 可在控制台看音频状态
   level:0, screen:'select', cards:[], backBtn:null, panelCount:0, banked:0, lastAdd:0,
   navBtns:[], giftCards:[], toast:'', toastT:0,      // M3：底部导航 / 礼品卡 / 兑换提示
+  free:false, freeCard:null, freeSpawnT:0,           // M4：自由发泄屋模式
 };
 
 /* ================= 画布 ================= */
@@ -681,9 +848,10 @@ function panelHit(p){ return inRect(p,G.btn1)||inRect(p,G.btn2)||inRect(p,G.btn3
 cv.addEventListener('pointerdown',e=>{
   AU.unlock();
   const p=toCanvas(e);
-  if(G.screen==='select'){               // 选关界面：底部导航 + 点卡片
+  if(G.screen==='select'){               // 选关界面：底部导航 + 发泄屋 + 关卡卡片
     const n=G.navBtns.findIndex(r=>inRect(p,r));
     if(n>=0){ AU.ui(); openScreen(['shop','hall','titles'][n]); return; }
+    if(inRect(p,G.freeCard)){ AU.ui(); if(freeUnlocked()) startFree(); return; }
     const i=G.cards.findIndex(r=>inRect(p,r));
     if(i>=0){ AU.ui(); if(Save.unlocked(i)) startLevel(i); }
     return;
@@ -776,6 +944,14 @@ function addCracks(it){
 }
 function takeDamage(it, source){
   if(it.state==='gone') return;
+  if(it.type.unbreakable){                     // 保险箱：砸不碎，金属"哐"弹飞当工具
+    AU.metalClang(1);
+    G.shakeAmp=Math.max(G.shakeAmp,3);
+    if(it.state==='rest'){ it.state='fly'; it.vx=rnd(-260,260); it.vy=-rnd(200,380); it.vang=rnd(-6,6); }
+    else { it.vx*=-0.5; it.vy=-Math.abs(it.vy)*0.5; }
+    floater('哐！', it.x, it.y-it.h/2-8, false, 0.8);
+    return;
+  }
   it.source=source||it.source||'throw';
   it.hp--;
   if(it.hp<=0){ smash(it); return; }
@@ -788,7 +964,8 @@ function takeDamage(it, source){
 function smash(it){
   it.state='gone';
   makeFragments(it); makeDust(it);
-  AU.shatter(it.type.mat);
+  if(it.type.reflect) AU.dingcluster();      // 大镜子：叮当群（替代普通玻璃声）
+  else AU.shatter(it.type.mat);
   const m=it.type.mass;
   G.freezeT=Math.max(G.freezeT, m>=4?0.12:(m>=1.2?0.07:0.04));   // 顿帧
   G.shakeAmp=Math.max(G.shakeAmp, Math.min(14,m*2));             // 震屏
@@ -803,6 +980,11 @@ function smash(it){
   floater('+'+pts, it.x, it.y-it.h/2-6, mult>1||chain, clamp(0.8+it.type.mass*0.15,0.8,1.6));
   if(chain) floater('连锁！', it.x, it.y-it.h/2-34, false, 0.7);
   if(G.combo>=2) AU.combo(G.combo);
+  if(G.free){                              // 发泄屋：砸碎直接入账总积分（无结算面板）
+    Save.addScore(pts);
+    Save.data.maxCombo=Math.max(Save.data.maxCombo||0,G.maxCombo);
+    Save.save();
+  }
   // 统计与慢动作
   G.smashed++;
   const now=performance.now();
@@ -825,7 +1007,8 @@ function makeFragments(it){
       segs.push([[cx,cy],a,m],[[cx,cy],m,b]);
     }else segs.push([[cx,cy],a,b]);
   }
-  const burst=150+it.type.mass*70;
+  let burst=150+it.type.mass*70;
+  if(it.type.reflect) burst*=1.8;              // 镜子：碎片速度加成（反射连锁）
   for(const s of segs){
     let mx=0,my=0; s.forEach(q=>{mx+=q[0];my+=q[1];}); mx/=s.length; my/=s.length;
     const pts=s.map(q=>[q[0]*cos-q[1]*sin, q[0]*sin+q[1]*cos]);
@@ -835,7 +1018,7 @@ function makeFragments(it){
       vy:it.vy*0.7+(my/maxR)*burst*rnd(0.5,1)-burst*0.45+rnd(-50,50),
       ang:it.ang+rnd(-0.3,0.3), vang:rnd(-14,14),
       color:Math.random()<0.3?it.type.color2:shade(it.type.color,rnd(-0.12,0.08)),
-      edge:it.type.edge, bounces:0, settled:false,
+      edge:it.type.edge, bounces:0, settled:false, hard:!!it.type.reflect,
     });
     if(G.fragments.length>150) G.fragments.shift();   // 碎片上限，对象池式回收
   }
@@ -851,7 +1034,7 @@ function floater(txt,x,y,gold,s){
   if(G.floaters.length>40) G.floaters.shift();
 }
 function checkPass(){
-  if(G.passed||G.state!=='play') return;
+  if(G.free||G.passed||G.state!=='play') return;   // 发泄屋无通关目标
   const need=G.panelCount===0?Math.ceil(G.total*PASS_RATE):G.total;  // 继续砸场后：全清才再次结算
   if(G.smashed>=need){ G.passed=true; G.state='won'; G.panelDelay=0.9; }
 }
@@ -887,20 +1070,28 @@ function step(dt, realDt){
   }
   if(G.panel) G.panelT+=realDt;
   if(G.hintT>0) G.hintT-=realDt;
+  if(G.free){                              // 发泄屋：存活物品少于 9 件就不断刷新
+    G.freeSpawnT-=realDt;
+    let alive=0;
+    for(const it of G.items) if(it.state!=='gone') alive++;
+    if(alive<9&&G.freeSpawnT<=0){ G.freeSpawnT=rnd(0.8,1.6); spawnFree(); }
+  }
   // 物品物理
   for(const it of G.items){
     if(it.state==='held'){ heldUpdate(it,realDt); continue; }
     if(it.state!=='fly') continue;
     it.vy+=GRAV*dt;
+    if(it.soft&&it.vy>300) it.vy=300;         // 发泄屋空投：限速下落
     it.x+=it.vx*dt; it.y+=it.vy*dt; it.ang+=it.vang*dt;
     const hh=it.h/2, hw=it.w/2;
     if(it.y+hh>GROUND){                       // 地面
       it.y=GROUND-hh;
+      if(it.soft){ it.soft=false; it.vy=0; it.vx*=0.5; it.vang*=0.6; it.state='rest'; continue; }  // 软着陆不摔碎
       const imp=Math.abs(it.vy);              // 撞击强度（vy 向下为正，取绝对值）
       if(imp>150){
         it.vy=-Math.abs(it.vy)*0.35; it.vx*=0.72; it.vang*=0.6;   // 弹起
         if(imp>it.type.thresh) takeDamage(it,it.source);
-        else if(imp>320) AU.thud(0.5+Math.min(0.5,imp/1500));
+        else if(imp>320){ if(it.type.unbreakable) AU.metalClang(clamp(imp/1500,0.4,1)); else AU.thud(0.5+Math.min(0.5,imp/1500)); }
       }else{
         it.vy=0; it.vx*=0.85; it.vang*=0.92;
         if(Math.abs(it.vx)<12&&Math.abs(it.vang)<0.4) it.state='rest';
@@ -909,11 +1100,12 @@ function step(dt, realDt){
     for(const tb of TABLES){                   // 落在桌面（与地面同规则）
       if(it.x>tb.x0+6&&it.x<tb.x1-6&&it.vy>0&&it.y+hh>tb.y&&it.y+hh<tb.y+34){
         it.y=tb.y-hh;
+        if(it.soft){ it.soft=false; it.vy=0; it.vx*=0.5; it.vang*=0.6; it.state='rest'; continue; }  // 软着陆不摔碎
         const imp=Math.abs(it.vy);
         if(imp>it.type.thresh) takeDamage(it,it.source);
         else if(imp>150){
           it.vy=-Math.abs(it.vy)*0.35; it.vx*=0.7; it.vang*=0.6;
-          if(imp>320) AU.thud(0.5+Math.min(0.5,imp/1500));
+          if(imp>320){ if(it.type.unbreakable) AU.metalClang(clamp(imp/1500,0.4,1)); else AU.thud(0.5+Math.min(0.5,imp/1500)); }
         }else{
           it.vy=0; it.vx*=0.85; it.vang*=0.92;
           if(Math.abs(it.vx)<12&&Math.abs(it.vang)<0.4) it.state='rest';
@@ -931,6 +1123,9 @@ function step(dt, realDt){
     for(const jt of G.items){
       if(jt.state!=='rest') continue;
       if(dist2(it.x,it.y,jt.x,jt.y)<(it.r+jt.r)*(it.r+jt.r)){
+        if(it.soft){                        // 发泄屋空投：落在堆叠物上即停，不砸伤
+          it.soft=false; it.vy=0; it.vx*=0.5; it.vang*=0.6; it.state='rest'; continue;
+        }
         const rel=Math.hypot(it.vx,it.vy);
         if(rel>240){
           takeDamage(jt,it.source);
@@ -948,8 +1143,8 @@ function step(dt, realDt){
     if(fr.y>GROUND-2){                         // 地面弹跳
       fr.y=GROUND-2;
       if(Math.abs(fr.vy)>80){
-        fr.vy*=-0.45; fr.vx*=0.7; fr.vang*=0.6; fr.bounces++;
-        if(fr.bounces<=3) AU.tick(fr.bounces);
+        fr.vy*=fr.hard?-0.6:-0.45; fr.vx*=fr.hard?0.78:0.7; fr.vang*=0.6; fr.bounces++;
+        if(fr.bounces<=(fr.hard?5:3)) AU.tick(fr.bounces);
       }else{
         fr.vy=0; fr.vx*=0.85; fr.vang*=0.85;
         if(Math.abs(fr.vx)<12&&fr.bounces>0) fr.settled=true;
@@ -968,6 +1163,11 @@ function step(dt, realDt){
       for(const jt of G.items){
         if(jt.state!=='rest') continue;
         if(dist2(fr.x,fr.y,jt.x,jt.y)<(jt.r+4)*(jt.r+4)){
+          if(jt.type.unbreakable){   // 砸中保险箱：碎片被弹回，保险箱被撞动
+            fr.vx*=-0.6; fr.vy*=-0.45; fr.vang+=rnd(-2,2); AU.metalClang(0.6);
+            jt.state='fly'; jt.vx=fr.vx*0.08; jt.vy=-rnd(40,120); jt.vang=rnd(-2,2);
+            break;
+          }
           takeDamage(jt,'chain'); fr.vx*=0.5; fr.vy*=0.5; break;
         }
       }
@@ -1028,10 +1228,20 @@ function drawDeco(c,d,th){  // 房间装饰（数据驱动：level.deco 数组�
     c.strokeStyle='#e05545'; c.lineWidth=3;
     c.beginPath(); c.arc(d.x+90,d.y+48,8,0,Math.PI*2); c.stroke();
     c.fillStyle='#e05545'; c.fillRect(d.x+22,d.y+76,14,4); c.fillStyle='#57b8e0'; c.fillRect(d.x+40,d.y+76,14,4);
+  }else if(d.k==='tub'){  // 浴缸（M4 浴室装饰）
+    c.fillStyle='#fdfdf4'; c.beginPath(); roundRect(c,d.x,d.y,150,54,20); c.fill();
+    c.strokeStyle='#9db8c8'; c.lineWidth=3; c.stroke();
+    c.fillStyle='#a8d8ec'; c.beginPath(); roundRect(c,d.x+8,d.y+8,134,30,14); c.fill();   // 水
+    c.fillStyle='#c9eaf7';
+    c.beginPath(); c.arc(d.x+70,d.y+40,10,0,Math.PI); c.fill();                           // 泡泡
+    c.beginPath(); c.arc(d.x+55,d.y+44,7,0,Math.PI); c.arc(d.x+85,d.y+44,7,0,Math.PI); c.fill();
+    c.strokeStyle='#9db8c8'; c.lineWidth=3;
+    c.beginPath(); c.arc(d.x+14,d.y+54,9,-0.4,1.5); c.stroke();                          // 支脚
+    c.beginPath(); c.arc(d.x+136,d.y+54,9,-0.4,1.5); c.stroke();
   }
 }
 function drawRoom(c){
-  const L=LEVELS[G.level], th=L.theme;
+  const L=G.free?FREE_ROOM:LEVELS[G.level], th=L.theme;
   const g=c.createLinearGradient(0,0,0,GROUND);
   g.addColorStop(0,th.wallTop); g.addColorStop(1,th.wallBot);
   c.fillStyle=g; c.fillRect(0,0,W,GROUND);
@@ -1145,7 +1355,7 @@ function drawHUD(c,t){
   c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,27);
   c.textAlign='left'; c.textBaseline='top';
   c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 15px "PingFang SC",sans-serif';
-  c.fillText('第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name,56,12);
+  c.fillText(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name,56,12);
   G.scoreShow+=(G.score-G.scoreShow)*Math.min(1,G.lastRealDt*10);
   c.font='800 30px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText(Math.round(G.scoreShow)+'',56,34);
@@ -1161,18 +1371,25 @@ function drawHUD(c,t){
     c.fillText(MULT[Math.min(G.combo,5)]+'x 倍率',0,30);
     c.restore();
   }
-  // 进度
+  // 进度（发泄屋无通关目标：只显示累计砸碎数）
   const bx=W-150, by=14, bw=136, bh=12;
-  c.fillStyle='rgba(0,0,0,0.35)'; c.beginPath(); roundRect(c,bx,by,bw,bh,6); c.fill();
-  const pct=G.smashed/G.total;
-  c.fillStyle='#7ee081'; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
-  const mx=bx+bw*PASS_RATE;
-  c.strokeStyle='#fff'; c.lineWidth=2;
-  c.beginPath(); c.moveTo(mx,by-2); c.lineTo(mx,by+bh+2); c.stroke();
-  c.textAlign='right'; c.font='700 12px "PingFang SC",sans-serif'; c.fillStyle='#fff';
-  c.fillText(G.smashed+'/'+G.total, bx+bw, by+bh+14);
-  c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.7)';
-  c.fillText('通关线', mx-2, by+bh+2);
+  if(G.free){
+    c.textAlign='right'; c.font='800 15px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+    c.fillText('已砸 '+G.smashed+' 件', bx+bw, by+18);
+    c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.7)';
+    c.fillText('无尽刷新 · 直接入账', bx+bw, by+34);
+  }else{
+    c.fillStyle='rgba(0,0,0,0.35)'; c.beginPath(); roundRect(c,bx,by,bw,bh,6); c.fill();
+    const pct=G.smashed/G.total;
+    c.fillStyle='#7ee081'; c.beginPath(); roundRect(c,bx,by,Math.max(bh,bw*pct),bh,6); c.fill();
+    const mx=bx+bw*PASS_RATE;
+    c.strokeStyle='#fff'; c.lineWidth=2;
+    c.beginPath(); c.moveTo(mx,by-2); c.lineTo(mx,by+bh+2); c.stroke();
+    c.textAlign='right'; c.font='700 12px "PingFang SC",sans-serif'; c.fillStyle='#fff';
+    c.fillText(G.smashed+'/'+G.total, bx+bw, by+bh+14);
+    c.font='600 10px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.7)';
+    c.fillText('通关线', mx-2, by+bh+2);
+  }
   // 页脚：总积分 + 称号
   c.textAlign='center'; c.textBaseline='middle';
   c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.5)';
@@ -1193,7 +1410,7 @@ function drawHint(c){
   c.font='700 16px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText('👆 按住物品甩出去砸碎 · 单击 = 轻砸', W/2, y);
   c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.75)';
-  c.fillText('砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
+  c.fillText(G.free?'物品会不断从天上掉下来 · 砸碎直接入账！':'砸碎 60% 即可通关 · 全部清空拿三星！', W/2, y+24);
   c.restore();
 }
 function drawBtn(c,r,txt,primary){
@@ -1343,63 +1560,84 @@ function drawSelect(c,t){
     c.fillText('距「'+ti.next[1]+'」还差 '+(ti.next[0]-Save.data.score)+' 分', W/2-pw/2, 192);
     c.textAlign='center';
   }
-  // 关卡卡片
+  // 关卡卡片（2 列 × 3 行）
   G.cards=[];
-  const cw=W-40, ch=148, cx0=20, cy0=212;
+  const cw=214, ch=126, gap=10, x0=(W-2*cw-gap)/2, y0=204;
   for(let i=0;i<LEVELS.length;i++){
-    const r={x:cx0,y:cy0+i*(ch+12),w:cw,h:ch};
+    const col=i%2, row=(i/2)|0;
+    const r={x:x0+col*(cw+gap), y:y0+row*(ch+gap), w:cw, h:ch};
     G.cards.push(r);
     const L=LEVELS[i], un=Save.unlocked(i);
     c.fillStyle=un?'#2b2b3d':'#232330';
-    c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,18); c.fill();
+    c.beginPath(); roundRect(c,r.x,r.y,r.w,r.h,16); c.fill();
     c.strokeStyle='rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
     // 迷你房间预览（用关卡主题色绘制）
-    const px=r.x+16, py=r.y+12, pw2=116, ph2=124;
-    c.save(); c.beginPath(); roundRect(c,px,py,pw2,ph2,12); c.clip();
-    const rg=c.createLinearGradient(0,py,0,py+ph2*0.68);
+    const px=r.x+8, py=r.y+8, pw2=cw-16, ph2=46;
+    c.save(); c.beginPath(); roundRect(c,px,py,pw2,ph2,9); c.clip();
+    const rg=c.createLinearGradient(0,py,0,py+ph2*0.72);
     rg.addColorStop(0,L.theme.wallTop); rg.addColorStop(1,L.theme.wallBot);
     c.fillStyle=rg; c.fillRect(px,py,pw2,ph2);
-    c.fillStyle=L.theme.wood; c.fillRect(px+8,py+10,34,44);
-    c.fillStyle='#bde3f7'; c.fillRect(px+12,py+14,26,36);
-    c.fillStyle='#fff';
-    c.beginPath(); c.arc(px+20,py+28,5,0,Math.PI*2); c.arc(px+30,py+26,4,0,Math.PI*2); c.fill();
-    c.fillRect(px+23,py+14,3,36);
-    c.fillStyle=L.theme.floor; c.fillRect(px,py+ph2*0.68,pw2,ph2*0.32);
-    c.fillStyle=L.theme.base; c.fillRect(px,py+ph2*0.68,pw2,5);
+    c.fillStyle=L.theme.wood; c.fillRect(px+6,py+5,14,20);
+    c.fillStyle='#bde3f7'; c.fillRect(px+9,py+7,9,16);
+    c.fillRect(px+13,py+7,2,16);
+    c.fillStyle=L.theme.floor; c.fillRect(px,py+ph2*0.72,pw2,ph2*0.28);
+    c.fillStyle=L.theme.base; c.fillRect(px,py+ph2*0.72,pw2,3);
+    if(!un){ c.fillStyle='rgba(10,10,20,0.45)'; c.fillRect(px,py,pw2,ph2); }   // 锁定暗化
     c.restore();
     c.strokeStyle='rgba(255,255,255,0.2)'; c.lineWidth=2;
-    c.beginPath(); roundRect(c,px,py,pw2,ph2,12); c.stroke();
+    c.beginPath(); roundRect(c,px,py,pw2,ph2,9); c.stroke();
     // 关数圆标
     c.fillStyle=un?'#ffd166':'#4a4a58';
-    c.beginPath(); c.arc(r.x+28,r.y+28,16,0,Math.PI*2); c.fill();
-    c.fillStyle='#23232f'; c.font='800 18px "PingFang SC",sans-serif';
-    c.fillText(''+(i+1), r.x+28, r.y+29);
+    c.beginPath(); c.arc(r.x+24,r.y+24,12,0,Math.PI*2); c.fill();
+    c.fillStyle='#23232f'; c.font='800 14px "PingFang SC",sans-serif';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(''+(i+1), r.x+24, r.y+25);
     // 文字
-    c.textAlign='left';
+    c.textAlign='left'; c.textBaseline='top';
     c.fillStyle=un?'#fff':'rgba(255,255,255,0.4)';
-    c.font='800 20px "PingFang SC",sans-serif';
-    c.fillText('第 '+(i+1)+' 关 · '+L.name, r.x+150, r.y+34);
-    c.font='600 12px "PingFang SC",sans-serif';
-    c.fillStyle=un?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
-    c.fillText(L.desc+' · '+L.items.length+' 件物品', r.x+150, r.y+60);
-    for(let s=0;s<3;s++){                   // 星级
-      c.font='26px sans-serif';
-      c.fillStyle=s<Save.data.stars[i]?'#ffd166':'rgba(255,255,255,0.16)';
-      c.fillText('★', r.x+150+s*32, r.y+92);
-    }
-    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.55)';
-    c.fillText(Save.data.best[i]?('最佳 '+Save.data.best[i]+' 分'):'尚未通关', r.x+150, r.y+122);
-    if(un){                                 // 开始按钮
-      c.fillStyle='#ffd166';
-      c.beginPath(); c.arc(r.x+r.w-42, r.y+r.h/2, 24, 0, Math.PI*2); c.fill();
+    c.font='800 15px "PingFang SC",sans-serif';
+    c.fillText('第 '+(i+1)+' 关 · '+L.name, r.x+12, r.y+62);
+    if(un){
+      for(let s=0;s<3;s++){                 // 星级
+        c.font='17px sans-serif';
+        c.fillStyle=s<Save.data.stars[i]?'#ffd166':'rgba(255,255,255,0.16)';
+        c.fillText('★', r.x+12+s*21, r.y+86);
+      }
+      c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.5)';
+      c.fillText(Save.data.best[i]?('最佳 '+Save.data.best[i]+' 分'):'尚未通关', r.x+12, r.y+104);
+      c.fillStyle='#ffd166';                // 开始按钮
+      c.beginPath(); c.arc(r.x+cw-24, r.y+ch-24, 16, 0, Math.PI*2); c.fill();
       c.fillStyle='#23232f';
-      c.beginPath(); c.moveTo(r.x+r.w-48, r.y+r.h/2-12); c.lineTo(r.x+r.w-48, r.y+r.h/2+12); c.lineTo(r.x+r.w-30, r.y+r.h/2); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(r.x+cw-29, r.y+ch-31); c.lineTo(r.x+cw-29, r.y+ch-17); c.lineTo(r.x+cw-16, r.y+ch-24); c.closePath(); c.fill();
     }else{                                  // 锁
-      c.textAlign='center'; c.font='30px sans-serif';
-      c.fillText('🔒', r.x+r.w-42, r.y+r.h/2);
+      c.textAlign='center'; c.font='18px sans-serif';
+      c.fillText('🔒', r.x+cw/2, r.y+82);
       c.font='600 11px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.45)';
-      c.fillText('通关上一关解锁', r.x+r.w-42, r.y+r.h/2+34);
+      c.fillText('通关上一关解锁', r.x+cw/2, r.y+102);
     }
+  }
+  // 自由发泄屋入口（通关第 3 关解锁）
+  const fUn=freeUnlocked();
+  G.freeCard={x:20, y:y0+3*(ch+gap)+8, w:W-40, h:56};
+  c.fillStyle=fUn?'#3a2f2b':'#232330';
+  c.beginPath(); roundRect(c,G.freeCard.x,G.freeCard.y,G.freeCard.w,G.freeCard.h,16); c.fill();
+  c.strokeStyle=fUn?'rgba(255,140,80,0.55)':'rgba(255,255,255,0.12)'; c.lineWidth=2; c.stroke();
+  c.textAlign='left'; c.textBaseline='top';
+  c.fillStyle=fUn?'#ffb080':'rgba(255,255,255,0.45)';
+  c.font='800 17px "PingFang SC",sans-serif';
+  c.fillText('💥 自由发泄屋', G.freeCard.x+14, G.freeCard.y+9);
+  c.font='600 11px "PingFang SC",sans-serif';
+  c.fillStyle=fUn?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.3)';
+  c.fillText('无尽物品 · 无目标 · 纯刷分', G.freeCard.x+14, G.freeCard.y+33);
+  if(fUn){
+    c.fillStyle='#ffd166';
+    c.beginPath(); c.arc(G.freeCard.x+G.freeCard.w-30, G.freeCard.y+G.freeCard.h/2, 16, 0, Math.PI*2); c.fill();
+    c.fillStyle='#23232f';
+    c.beginPath(); c.moveTo(G.freeCard.x+G.freeCard.w-35, G.freeCard.y+G.freeCard.h/2-10); c.lineTo(G.freeCard.x+G.freeCard.w-35, G.freeCard.y+G.freeCard.h/2+10); c.lineTo(G.freeCard.x+G.freeCard.w-22, G.freeCard.y+G.freeCard.h/2); c.closePath(); c.fill();
+  }else{
+    c.textAlign='right'; c.textBaseline='middle';
+    c.font='600 12px "PingFang SC",sans-serif'; c.fillStyle='rgba(255,255,255,0.45)';
+    c.fillText('🔒 通关第 3 关解锁', G.freeCard.x+G.freeCard.w-14, G.freeCard.y+G.freeCard.h/2+1);
   }
   // 底部导航：礼品馆 / 荣誉室 / 称号
   G.navBtns=[];
@@ -1593,9 +1831,15 @@ function drawTitles(c,t){   // 称号：当前等级进度 + 全部称号列表 
   drawToast(c);
 }
 function startLevel(n){
-  G.level=n; G.screen='play';
+  G.level=n; G.free=false; G.screen='play';
   resetLevel();
 }
+function startFree(){  // 自由发泄屋：无尽刷分模式（第 3 关后解锁）
+  G.level=LEVELS.length; G.free=true; G.screen='play';
+  resetLevel();
+  for(let i=0;i<8;i++) spawnFree();   // 开场一波物品雨
+}
+function freeUnlocked(){ return Save.data.stars[2]>=1; }   // 通关第 3 关（1 星即可）解锁
 function openScreen(s){ G.screen=s; }   // 选关 → 礼品馆/荣誉室/称号
 function tryRedeem(i){                  // 兑换礼品：积分达标即可领取（不扣分），赠称号徽章
   const g=GIFTS[i];
@@ -1606,7 +1850,7 @@ function tryRedeem(i){                  // 兑换礼品：积分达标即可领�
   if(navigator.vibrate) navigator.vibrate([30,50,30,50,60]);
 }
 function showLevelSelect(){
-  G.screen='select'; G.panel=false;
+  G.screen='select'; G.panel=false; G.free=false;
   input.active=false; input.held=null;
   G.items=[]; G.fragments=[]; G.dust=[]; G.floaters=[];
   G.shakeAmp=0; G.timeScale=1; G.slowmoT=0; G.freezeT=0;
@@ -1615,10 +1859,13 @@ function resetLevel(){
   G.items=makeItems();
   G.fragments=[]; G.dust=[]; G.floaters=[];
   G.score=0; G.scoreShow=0; G.combo=0; G.comboT=0; G.maxCombo=0;
-  G.smashed=0; G.total=G.items.length;
+  G.smashed=0;
+  G.total=0;
+  for(const it of G.items) if(!it.type.unbreakable) G.total++;   // 保险箱不计入通关目标
   G.passed=false; G.panel=false; G.panelShown=false; G.panelDelay=0; G.panelT=0;
   G.state='play'; G.freezeT=0; G.shakeAmp=0; G.timeScale=1; G.slowmoT=0;
   G.breakTimes=[]; G.hintT=8; G.panelCount=0; G.banked=0; G.lastAdd=0;
+  G.freeSpawnT=0;
   input.active=false; input.held=null;
 }
 
