@@ -7,6 +7,7 @@
 <style>
   html,body{margin:0;padding:0;height:100%;background:#191922;overflow:hidden;
     touch-action:none;-webkit-user-select:none;user-select:none;
+    overscroll-behavior:none;                  /* M6：禁下拉刷新/橡皮筋回弹 */
     -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
   body{display:flex;align-items:center;justify-content:center;}
   canvas{background:#000;
@@ -26,7 +27,7 @@ const W=480, H=854, GROUND=720, GRAV=2200;
 const MULT=[1,1.2,1.5,2,3,5];          // 连击倍率
 const COMBO_WINDOW=3;                  // 连击窗口（秒）
 const PASS_RATE=0.6;                   // 通关所需砸碎率
-const VERSION='1.1';                   // M5 UI 改版
+const VERSION='1.2';                   // M6 手机体验优化
 
 /* ================= 工具 ================= */
 const rnd=(a,b)=>a+Math.random()*(b-a);
@@ -850,6 +851,7 @@ const G={
   free:false, freeCard:null, freeSpawnT:0,           // M4：自由发泄屋模式
   screenT:0, fade:0,                                  // M5：界面切换动画（入场时钟/淡入遮罩）
   resetArm:false, resetT:0, sliderDrag:false,         // M5：设置界面状态
+  retArm:false, retT:0,                                // M6：游戏内返回按钮二次确认
   volBar:null, setSfxTgl:null, setVibTgl:null, resetBtn:null, confetti:[],
 };
 
@@ -942,7 +944,11 @@ cv.addEventListener('pointerdown',e=>{
     else if(inRect(p,G.btn3)) showLevelSelect();     // 选关
     return;
   }
-  if(inRect(p,G.backBtn)){ AU.ui(); showLevelSelect(); return; }   // 返回选关
+  if(inRect(p,G.backBtn)){             // M6：二次确认，防误触退出丢进度
+    if(G.retArm){ AU.ui(); showLevelSelect(); return; }
+    AU.ui(); G.retArm=true; G.retT=3; return;
+  }
+  G.retArm=false;                      // M6：点其他地方取消退出确认
   if(input.active) return;
   e.preventDefault();
   input.active=true; input.id=e.pointerId; input.x=p.x; input.y=p.y;
@@ -987,6 +993,8 @@ function release(){
 window.addEventListener('pointerup',e=>{ if(G.sliderDrag){ G.sliderDrag=false; return; } if(e.pointerId===input.id) release(); });
 window.addEventListener('pointercancel',e=>{ if(G.sliderDrag){ G.sliderDrag=false; return; } if(e.pointerId===input.id) release(); });
 document.addEventListener('contextmenu',e=>e.preventDefault());
+document.addEventListener('gesturestart',e=>e.preventDefault());   // M6：旧 iOS Safari 双指缩放拦截
+document.addEventListener('dblclick',e=>e.preventDefault());       // M6：桌面双击缩放拦截
 document.addEventListener('touchmove',e=>{ if(input.active) e.preventDefault(); },{passive:false});
 // 移动端音频解锁兜底：部分安卓/iOS 浏览器只认 touchstart/touchend/click 手势
 document.addEventListener('touchstart',()=>AU.unlock(),{passive:true});
@@ -1135,7 +1143,7 @@ function step(dt, realDt){
   else if(G.timeScale<1) G.timeScale=Math.min(1,G.timeScale+realDt*2.2);
   if(G.state==='won'&&!G.panel&&!G.panelShown){
     const settled=G.items.every(it=>it.state!=='fly')&&G.items.every(it=>it.state!=='held');
-    if(settled){ G.panelDelay-=realDt; if(G.panelDelay<=0){ G.panel=true; G.panelShown=true; G.panelT=0; G.panelCount++; bankScore(); AU.fanfare(); if(starsFor()>=3) confettiBurst(); } }   // M5：三星彩带
+    if(settled){ G.panelDelay-=realDt; if(G.panelDelay<=0){ G.panel=true; G.panelShown=true; G.panelT=0; G.panelCount++; bankScore(); AU.fanfare(); vib([30,50,30,70,90]); if(starsFor()>=3) confettiBurst(); } }   // M5：三星彩带；M6：结算震动
   }
   if(G.panel) G.panelT+=realDt;
   if(G.hintT>0) G.hintT-=realDt;
@@ -1419,13 +1427,14 @@ function drawHUD(c,t){   // M5：HUD（金圈返回 / 珊瑚连击横幅 / 金�
   c.fillStyle=g; c.fillRect(0,0,W,110);
   // 返回选关按钮
   G.backBtn={x:14,y:14,w:34,h:34};
-  c.fillStyle='rgba(255,255,255,0.1)'; c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
-  c.strokeStyle='rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
-  c.fillStyle=UI.gold; c.font='800 22px "PingFang SC",sans-serif';
-  c.textAlign='center'; c.textBaseline='middle'; c.fillText('‹',30,26);
+  c.fillStyle=G.retArm?'rgba(255,122,89,0.9)':'rgba(255,255,255,0.1)';   // M6：确认态珊瑚底
+  c.beginPath(); c.arc(31,31,17,0,Math.PI*2); c.fill();
+  c.strokeStyle=G.retArm?UI.coral:'rgba(255,209,102,0.6)'; c.lineWidth=2; c.stroke();
+  c.fillStyle=G.retArm?'#2a1308':UI.gold; c.font='800 22px "PingFang SC",sans-serif';
+  c.textAlign='center'; c.textBaseline='middle'; c.fillText(G.retArm?'✕':'‹',30,26);
   c.textAlign='left'; c.textBaseline='top';
-  c.fillStyle='rgba(255,255,255,0.85)'; c.font='600 14px "PingFang SC",sans-serif';
-  c.fillText(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name,56,11);
+  c.fillStyle=G.retArm?UI.coral:'rgba(255,255,255,0.85)'; c.font='600 14px "PingFang SC",sans-serif';
+  c.fillText(G.retArm?'再点一次退出本关':(G.free?'💥 自由发泄屋':'第 '+(G.level+1)+' 关 · '+LEVELS[G.level].name),56,11);
   G.scoreShow+=(G.score-G.scoreShow)*Math.min(1,G.lastRealDt*10);
   c.font='800 28px "PingFang SC",sans-serif'; c.fillStyle='#fff';
   c.fillText(Math.round(G.scoreShow)+'',56,32);
@@ -2064,6 +2073,7 @@ function resetLevel(){
   G.state='play'; G.freezeT=0; G.shakeAmp=0; G.timeScale=1; G.slowmoT=0;
   G.breakTimes=[]; G.hintT=8; G.panelCount=0; G.banked=0; G.lastAdd=0;
   G.freeSpawnT=0;
+  G.retArm=false; G.retT=0;                // M6：退出确认复位
   input.active=false; input.held=null;
 }
 
@@ -2079,6 +2089,7 @@ function frame(now){
   if(G.fade>0) G.fade-=realDt;              // M5：切屏淡入遮罩
   if(G.screenT<10) G.screenT+=realDt;       // M5：入场动画时钟
   if(G.resetT>0){ G.resetT-=realDt; if(G.resetT<=0) G.resetArm=false; }   // M5：重置确认倒计时
+  if(G.retT>0){ G.retT-=realDt; if(G.retT<=0) G.retArm=false; }           // M6：退出确认倒计时
   if(G.freezeT>0) G.freezeT-=realDt;        // 顿帧：世界暂停，画面照常渲染
   else if(G.screen==='play') step(realDt*G.timeScale, realDt);   // 慢动作：物理时间缩放
   render(now/1000);
